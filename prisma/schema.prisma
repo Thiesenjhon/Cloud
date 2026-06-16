@@ -1,0 +1,84 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Provider {
+  id              String   @id @default(cuid())
+  cnpj            String   @unique
+  razaoSocial     String
+  nomeFantasia    String?
+  uf              String
+  municipio       String
+  porte           String?
+  situacao        String?
+  dataAutorizacao DateTime?
+
+  googlePlaceId   String?
+  googleRating    Float?
+  googleReviews   Int?
+  googleAddress   String?
+  googlePhone     String?
+  googleWebsite   String?
+  googleCategory  String?
+
+  websiteUrl      String?
+  instagramUrl    String?
+  facebookUrl     String?
+
+  enrichedAt      DateTime?
+  scrapedAt       DateTime?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  plans           Plan[]
+}
+
+model Plan {
+  id            String   @id @default(cuid())
+  providerId    String
+  provider      Provider @relation(fields: [providerId], references: [id])
+
+  name          String
+  technology    String
+  downloadSpeed Int
+  uploadSpeed   Int
+  price         Float
+  currency      String   @default("BRL")
+
+  hasStreaming   Boolean @default(false)
+  hasFixedIp     Boolean @default(false)
+  hasSecurity    Boolean @default(false)
+  hasPhone       Boolean @default(false)
+  hasTV          Boolean @default(false)
+  svaDetails     String?
+
+  contractMonths Int?
+  installationFee Float?
+
+  sourceUrl     String?
+  extractedBy   String?
+  confidence    Float?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model CollectionJob {
+  id          String   @id @default(cuid())
+  type        String
+  status      String
+  providerId  String?
+  total       Int      @default(0)
+  processed   Int      @default(0)
+  errors      Int      @default(0)
+  log         String?
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  createdAt   DateTime @default(now())
+}
