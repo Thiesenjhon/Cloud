@@ -51,6 +51,7 @@ export default function ColetaPage() {
   const [selectedUf, setSelectedUf] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  const [importProgress, setImportProgress] = useState<{ processed: number; total: number } | null>(null)
   const [researchingUf, setResearchingUf] = useState<string | null>(null)
 
   async function loadStates() {
@@ -64,14 +65,40 @@ export default function ColetaPage() {
   useEffect(() => { loadStates() }, [])
 
   async function importFromData() {
-    setImporting(true); setImportResult(null)
+    setImporting(true); setImportResult(null); setImportProgress(null)
+    const BATCH = 500
+    let offset = 0
+    let totalImported = 0
+    let totalSkipped = 0
+    let grandTotal = 8950
     try {
-      const res = await fetch('/api/import/from-data', { method: 'POST' })
-      const data = await res.json()
-      setImportResult(data)
+      // Get total first
+      const meta = await fetch('/api/import/from-data').then(r => r.json()).catch(() => ({ total: 8950 }))
+      grandTotal = meta.total || 8950
+      setImportProgress({ processed: 0, total: grandTotal })
+
+      while (offset < grandTotal) {
+        const res = await fetch('/api/import/from-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ offset, limit: BATCH }),
+        })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const data = await res.json()
+        if (data.error) throw new Error(data.error)
+        totalImported += data.imported || 0
+        totalSkipped += data.skipped || 0
+        offset += BATCH
+        setImportProgress({ processed: Math.min(offset, grandTotal), total: grandTotal })
+        if (data.done) break
+      }
+      setImportResult({ imported: totalImported, skipped: totalSkipped, source: 'xlsx_data', total: grandTotal })
       await loadStates()
-    } catch { setImportResult({ imported: 0, skipped: 0, source: 'error', total: 0 }) }
-    finally { setImporting(false) }
+    } catch (e) {
+      setImportResult({ imported: totalImported, skipped: totalSkipped, source: 'error', total: grandTotal })
+    } finally {
+      setImporting(false); setImportProgress(null)
+    }
   }
 
   async function importAnatel() {
@@ -141,9 +168,18 @@ export default function ColetaPage() {
                 <h3 className="text-sm font-semibold text-white">Passo 1 — Importar lista de 8.950 provedores</h3>
               </div>
               <p className="text-xs text-gray-400">Importa a base de provedores com ranking por número de acessos (fonte: ANATEL). Execute uma vez para popular o banco.</p>
-              {importResult && (
+              {importProgress && (
+                <div className="mt-2 space-y-1">
+                  <p className="text-xs text-cyan-400">{importProgress.processed.toLocaleString('pt-BR')} / {importProgress.total.toLocaleString('pt-BR')} processados...</p>
+                  <div className="w-full bg-gray-800 rounded-full h-1.5">
+                    <div className="h-1.5 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 transition-all"
+                      style={{ width: `${(importProgress.processed / importProgress.total) * 100}%` }} />
+                  </div>
+                </div>
+              )}
+              {importResult && !importProgress && (
                 <p className={`mt-2 text-xs ${importResult.source === 'error' ? 'text-red-400' : 'text-emerald-400'}`}>
-                  {importResult.source === 'error' ? 'Erro na importação.' : `✓ ${importResult.imported.toLocaleString('pt-BR')} provedores importados · fonte: ${importResult.source}`}
+                  {importResult.source === 'error' ? `Erro após ${importResult.imported.toLocaleString('pt-BR')} importados.` : `✓ ${importResult.imported.toLocaleString('pt-BR')} provedores importados · ${importResult.skipped.toLocaleString('pt-BR')} já existiam`}
                 </p>
               )}
             </div>
