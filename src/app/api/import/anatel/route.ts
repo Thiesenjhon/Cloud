@@ -8,16 +8,21 @@ import { getMockProviders } from '@/lib/anatel'
 // Real ANATEL SCM dataset on dados.gov.br
 const ANATEL_API = 'https://dados.gov.br/api/3/action/datastore_search'
 const RESOURCE_IDS = [
-  'f18fbf34-4b82-4ca3-9e57-5bc1e5c5b32e', // SCM outorgas
-  '9b40ba79-bb40-4a41-9bff-58dc6d0ef44e', // alternative
+  '3690858e-ef41-4938-a9cb-d963cdcfa794', // SCM isentas de autorização (dados.gov.br)
+  'f18fbf34-4b82-4ca3-9e57-5bc1e5c5b32e', // SCM outorgas v1
+  '9b40ba79-bb40-4a41-9bff-58dc6d0ef44e', // SCM alternative
 ]
 
 async function fetchFromAnatel(): Promise<{ cnpj: string; razaoSocial: string; nomeFantasia?: string; uf: string; municipio: string; porte?: string; situacao?: string }[]> {
   for (const resourceId of RESOURCE_IDS) {
     try {
       const res = await fetch(`${ANATEL_API}?resource_id=${resourceId}&limit=5000`, {
-        headers: { 'User-Agent': 'AnatelResearch/1.0' },
-        signal: AbortSignal.timeout(20000),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; DataCollector/1.0)',
+          'Accept': 'application/json',
+          'Accept-Language': 'pt-BR,pt;q=0.9',
+        },
+        signal: AbortSignal.timeout(25000),
       })
       if (!res.ok) continue
       const data = await res.json()
