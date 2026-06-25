@@ -1,53 +1,99 @@
 'use client'
-import { useEffect, useRef, useState, useCallback } from 'react'
+
+import { useCallback, useEffect, useRef, useState } from 'react'
+
+// ── Types ────────────────────────────────────────────────────────────────────
 
 interface Plan {
-  id: string; name: string; technology: string
-  downloadSpeed: number; uploadSpeed: number; price: number; currency: string
+  id: string
+  name: string
+  technology: string
+  downloadSpeed: number
+  uploadSpeed: number
+  price: number
+  currency: string
 }
+
 interface Provider {
-  id: string; nomeFantasia: string | null; razaoSocial: string
-  cnpj: string | null; uf: string; municipio: string; porte: string | null
-  situacao: string | null; crmColumnId: string | null; crmOrder: number; crmNotes: string | null
-  googleRating: number | null; googleReviews: number | null; googleAddress: string | null
-  googlePhone: string | null; googleWebsite: string | null; googleCategory: string | null
-  websiteUrl: string | null; instagramUrl: string | null; facebookUrl: string | null
-  enrichedAt: string | null; plans: Plan[]
+  id: string
+  nomeFantasia: string | null
+  razaoSocial: string
+  cnpj: string | null
+  uf: string
+  municipio: string
+  porte: string | null
+  situacao: string | null
+  crmOrder: number
+  crmNotes: string | null
+  crmColumnId: string | null
+  googleRating: number | null
+  googleReviews: number | null
+  googleAddress: string | null
+  googlePhone: string | null
+  googleWebsite: string | null
+  googleCategory: string | null
+  websiteUrl: string | null
+  instagramUrl: string | null
+  facebookUrl: string | null
+  enrichedAt: string | null
+  plans: Plan[]
 }
-interface Column {
-  id: string; name: string; order: number; color: string
-  _count?: { providers: number }
-}
-interface EnrichJob { id: string; type: string; status: string; processed: number; total: number }
 
-const COLORS = ['#6b7280','#ef4444','#f97316','#eab308','#22c55e','#06b6d4','#8b5cf6','#ec4899']
-
-function StatusDot({ provider }: { provider: Provider }) {
-  if (provider.enrichedAt && provider.googleRating) return <span className="w-2 h-2 rounded-full bg-green-400 inline-block" title="Enriquecido" />
-  if (provider.enrichedAt) return <span className="w-2 h-2 rounded-full bg-yellow-400 inline-block" title="Pesquisado sem dados" />
-  return <span className="w-2 h-2 rounded-full bg-gray-600 inline-block" title="Sem dados" />
+interface CrmColumn {
+  id: string
+  name: string
+  order: number
+  color: string
+  _count: { providers: number }
 }
 
-function ProviderCard({ provider, onOpen, onDragStart }: {
+interface EnrichJob {
+  id: string
+  type: string
+  status: string
+  processed: number
+  total: number
+}
+
+// ── Enrichment status dot ────────────────────────────────────────────────────
+
+function EnrichDot({ provider }: { provider: Provider }) {
+  if (provider.enrichedAt && provider.googleRating) {
+    return <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" title="Enriched with rating" />
+  }
+  if (provider.enrichedAt) {
+    return <span className="w-2 h-2 rounded-full bg-yellow-400 flex-shrink-0" title="Enriched, no rating" />
+  }
+  return <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" title="Not enriched" />
+}
+
+// ── Provider card ─────────────────────────────────────────────────────────────
+
+function ProviderCard({
+  provider,
+  onDragStart,
+  onClick,
+}: {
   provider: Provider
-  onOpen: (p: Provider) => void
-  onDragStart: (e: React.DragEvent, p: Provider) => void
+  onDragStart: (e: React.DragEvent, providerId: string, sourceColumnId: string) => void
+  onClick: (provider: Provider) => void
 }) {
-  const name = provider.nomeFantasia || provider.razaoSocial
+  const displayName = provider.nomeFantasia || provider.razaoSocial
+
   return (
     <div
       draggable
-      onDragStart={(e) => onDragStart(e, provider)}
-      onClick={() => onOpen(provider)}
-      className="bg-gray-900 border border-gray-800 rounded-lg p-3 cursor-pointer hover:border-gray-600 transition-colors select-none"
+      onDragStart={(e) => onDragStart(e, provider.id, provider.crmColumnId ?? 'inbox')}
+      onClick={() => onClick(provider)}
+      className="bg-gray-900 border border-gray-800 rounded-lg p-3 cursor-grab active:cursor-grabbing hover:border-gray-700 transition-colors select-none"
     >
       <div className="flex items-start gap-2">
-        <StatusDot provider={provider} />
+        <EnrichDot provider={provider} />
         <div className="flex-1 min-w-0">
-          <p className="text-gray-100 text-sm font-medium truncate">{name}</p>
-          <p className="text-gray-500 text-xs mt-0.5">{provider.municipio}/{provider.uf}</p>
-          {provider.plans.length > 0 && (
-            <p className="text-cyan-500 text-xs mt-1">{provider.plans.length} plano{provider.plans.length !== 1 ? 's' : ''} · R$ {Math.min(...provider.plans.map(p => p.price)).toFixed(0)}/mês</p>
+          <p className="text-gray-100 text-sm font-medium truncate">{displayName}</p>
+          <p className="text-gray-400 text-xs truncate">{provider.municipio}, {provider.uf}</p>
+          {provider.googleRating && (
+            <p className="text-yellow-400 text-xs mt-1">★ {provider.googleRating} ({provider.googleReviews})</p>
           )}
         </div>
       </div>
@@ -55,423 +101,561 @@ function ProviderCard({ provider, onOpen, onDragStart }: {
   )
 }
 
-function ColumnPanel({ column, providers, total, pages, page, loading, onLoadMore, onDrop, onDragOver, onOpen, onDragStart, onRename, onDelete, onAddColumn }: {
-  column: { id: string; name: string; color: string; count: number } | null // null = inbox
+// ── Column ────────────────────────────────────────────────────────────────────
+
+function KanbanColumn({
+  id,
+  name,
+  color,
+  count,
+  providers,
+  isInbox,
+  onDragStart,
+  onDrop,
+  onCardClick,
+  onRename,
+  onDelete,
+}: {
+  id: string
+  name: string
+  color: string
+  count: number
   providers: Provider[]
-  total: number; pages: number; page: number; loading: boolean
-  onLoadMore: () => void
-  onDrop: (e: React.DragEvent, columnId: string) => void
-  onDragOver: (e: React.DragEvent) => void
-  onOpen: (p: Provider) => void
-  onDragStart: (e: React.DragEvent, p: Provider) => void
-  onRename?: (id: string, name: string) => void
-  onDelete?: (id: string) => void
-  onAddColumn?: () => void
+  isInbox: boolean
+  onDragStart: (e: React.DragEvent, providerId: string, sourceColumnId: string) => void
+  onDrop: (e: React.DragEvent, targetColumnId: string) => void
+  onCardClick: (provider: Provider) => void
+  onRename: (id: string, name: string) => void
+  onDelete: (id: string) => void
 }) {
   const [editing, setEditing] = useState(false)
-  const [editName, setEditName] = useState(column?.name || '')
-  const [over, setOver] = useState(false)
-  const colId = column?.id || 'inbox'
-  const colColor = column?.color || '#06b6d4'
-  const colName = column?.name || 'Inbox'
-  const count = column?.count ?? total
+  const [editName, setEditName] = useState(name)
+  const [dragOver, setDragOver] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const borderColor = isInbox ? '#06b6d4' : color
+
+  function handleRenameBlur() {
+    setEditing(false)
+    if (editName.trim() && editName !== name) {
+      onRename(id, editName.trim())
+    }
+  }
 
   return (
     <div
-      className={`flex-shrink-0 w-72 flex flex-col rounded-xl border ${over ? 'border-gray-500' : 'border-gray-800'} bg-gray-950 transition-colors`}
-      style={{ borderTopColor: colColor, borderTopWidth: 2 }}
-      onDragOver={(e) => { e.preventDefault(); setOver(true); onDragOver(e) }}
-      onDragLeave={() => setOver(false)}
-      onDrop={(e) => { setOver(false); onDrop(e, colId) }}
+      className={`flex-shrink-0 w-72 flex flex-col rounded-xl bg-gray-900/50 border border-gray-800 transition-colors ${dragOver ? 'border-cyan-500/60 bg-gray-900/80' : ''}`}
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => { setDragOver(false); onDrop(e, id) }}
     >
-      {/* header */}
-      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-800">
-        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: colColor }} />
-        {editing && column ? (
+      {/* Colored top border */}
+      <div className="h-1 rounded-t-xl" style={{ backgroundColor: borderColor }} />
+
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 pt-2 pb-1 gap-2">
+        {editing && !isInbox ? (
           <input
-            autoFocus
-            className="flex-1 bg-gray-800 text-gray-100 text-sm rounded px-1 py-0.5 outline-none"
+            ref={inputRef}
             value={editName}
-            onChange={e => setEditName(e.target.value)}
-            onBlur={() => { setEditing(false); if (editName.trim() && onRename) onRename(column.id, editName.trim()) }}
-            onKeyDown={e => { if (e.key === 'Enter') { setEditing(false); if (editName.trim() && onRename) onRename(column.id, editName.trim()) } }}
+            onChange={(e) => setEditName(e.target.value)}
+            onBlur={handleRenameBlur}
+            onKeyDown={(e) => { if (e.key === 'Enter') inputRef.current?.blur() }}
+            className="flex-1 bg-gray-800 text-gray-100 text-sm font-semibold px-2 py-0.5 rounded outline-none border border-cyan-500"
+            autoFocus
           />
         ) : (
-          <span
-            className={`flex-1 text-sm font-semibold text-gray-200 truncate ${column ? 'cursor-pointer hover:text-white' : ''}`}
-            onClick={() => { if (column) { setEditing(true); setEditName(column.name) } }}
-          >{colName}</span>
+          <button
+            className="flex-1 text-left text-sm font-semibold text-gray-100 truncate hover:text-cyan-400 transition-colors disabled:cursor-default"
+            onClick={() => !isInbox && setEditing(true)}
+            disabled={isInbox}
+          >
+            {name}
+          </button>
         )}
-        <span className="text-xs text-gray-500 flex-shrink-0">{count}</span>
-        {column && onDelete && (
-          <button onClick={() => onDelete(column.id)} className="text-gray-600 hover:text-red-400 text-xs ml-1" title="Excluir coluna">✕</button>
-        )}
-        {onAddColumn && (
-          <button onClick={onAddColumn} className="text-gray-600 hover:text-cyan-400 text-sm font-bold ml-1" title="Nova coluna">+</button>
+        <span className="text-xs text-gray-500 flex-shrink-0 bg-gray-800 rounded-full px-2 py-0.5">{count}</span>
+        {!isInbox && (
+          <button
+            onClick={() => onDelete(id)}
+            className="text-gray-600 hover:text-red-400 transition-colors text-xs flex-shrink-0"
+            title="Delete column"
+          >
+            ✕
+          </button>
         )}
       </div>
 
-      {/* cards */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-2 min-h-24 max-h-[calc(100vh-220px)]">
-        {providers.map(p => (
-          <ProviderCard key={p.id} provider={p} onOpen={onOpen} onDragStart={onDragStart} />
+      {/* Cards */}
+      <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-2 max-h-[calc(100vh-200px)]">
+        {providers.length === 0 && (
+          <div className="text-gray-700 text-xs text-center py-6">Drop cards here</div>
+        )}
+        {providers.map((p) => (
+          <ProviderCard
+            key={p.id}
+            provider={p}
+            onDragStart={onDragStart}
+            onClick={onCardClick}
+          />
         ))}
-        {loading && <p className="text-center text-gray-600 text-xs py-2">Carregando…</p>}
-        {!loading && page < pages && (
-          <button onClick={onLoadMore} className="w-full text-xs text-gray-500 hover:text-gray-300 py-2 border border-dashed border-gray-800 rounded-lg">
-            Carregar mais
-          </button>
-        )}
-        {!loading && providers.length === 0 && (
-          <p className="text-center text-gray-700 text-xs py-6">Arraste provedores aqui</p>
-        )}
       </div>
     </div>
   )
 }
 
-function FichaModal({ provider, onClose, onSaveNotes }: {
+// ── Provider Modal ────────────────────────────────────────────────────────────
+
+function ProviderModal({
+  provider,
+  onClose,
+  onNotesSave,
+}: {
   provider: Provider
   onClose: () => void
-  onSaveNotes: (id: string, notes: string) => void
+  onNotesSave: (id: string, notes: string) => void
 }) {
-  const [notes, setNotes] = useState(provider.crmNotes || '')
-  const [saving, setSaving] = useState(false)
-  const saveTimeout = useRef<NodeJS.Timeout>()
-  const name = provider.nomeFantasia || provider.razaoSocial
+  const [notes, setNotes] = useState(provider.crmNotes ?? '')
+  const displayName = provider.nomeFantasia || provider.razaoSocial
 
-  const handleNotes = (v: string) => {
-    setNotes(v)
-    clearTimeout(saveTimeout.current)
-    saveTimeout.current = setTimeout(async () => {
-      setSaving(true)
-      await fetch('/api/crm/providers', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ providerId: provider.id, crmNotes: v }) })
-      onSaveNotes(provider.id, v)
-      setSaving(false)
-    }, 800)
+  function handleNotesBlur() {
+    if (notes !== (provider.crmNotes ?? '')) {
+      onNotesSave(provider.id, notes)
+    }
+  }
+
+  function stars(rating: number) {
+    return '★'.repeat(Math.round(rating)) + '☆'.repeat(5 - Math.round(rating))
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex">
-      <div className="flex-1 bg-black/60" onClick={onClose} />
-      <div className="w-[480px] bg-gray-950 border-l border-gray-800 flex flex-col overflow-hidden">
-        {/* header */}
-        <div className="px-5 py-4 border-b border-gray-800 flex items-start justify-between">
-          <div>
-            <h2 className="text-white font-bold text-lg leading-tight">{name}</h2>
-            {provider.nomeFantasia && <p className="text-gray-500 text-xs mt-0.5">{provider.razaoSocial}</p>}
-          </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-white text-xl leading-none mt-0.5">✕</button>
+    <div className="fixed inset-0 z-50 flex" onClick={onClose}>
+      <div className="flex-1 bg-black/50" />
+      <div
+        className="w-[420px] bg-gray-950 border-l border-gray-800 h-full overflow-y-auto flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between p-4 border-b border-gray-800">
+          <h2 className="text-lg font-bold text-gray-100 truncate">{displayName}</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-xl ml-2">✕</button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
+        <div className="flex-1 p-4 space-y-6">
           {/* Identidade */}
-          <Section title="Identidade">
-            <Row label="CNPJ" value={provider.cnpj || <span className="text-yellow-500 text-xs">Não encontrado</span>} />
-            <Row label="UF" value={provider.uf} />
-            <Row label="Município" value={provider.municipio} />
-            <Row label="Porte" value={provider.porte} />
-            <Row label="Situação" value={provider.situacao} />
-          </Section>
+          <section>
+            <h3 className="text-xs font-semibold text-cyan-400 uppercase tracking-wider mb-2">Identidade</h3>
+            <div className="space-y-1 text-sm">
+              {provider.nomeFantasia && <Row label="Nome Fantasia" value={provider.nomeFantasia} />}
+              <Row label="Razão Social" value={provider.razaoSocial} />
+              {provider.cnpj && <Row label="CNPJ" value={provider.cnpj} />}
+              <Row label="UF" value={provider.uf} />
+              <Row label="Município" value={provider.municipio} />
+              {provider.porte && <Row label="Porte" value={provider.porte} />}
+              {provider.situacao && <Row label="Situação" value={provider.situacao} />}
+            </div>
+          </section>
 
           {/* Google */}
-          {provider.enrichedAt && (
-            <Section title="Google Meu Negócio">
-              {provider.googleRating ? (
-                <Row label="Avaliação" value={`⭐ ${provider.googleRating} (${provider.googleReviews?.toLocaleString('pt-BR')} avaliações)`} />
-              ) : <p className="text-gray-600 text-xs">Não encontrado no Google</p>}
-              <Row label="Endereço" value={provider.googleAddress} />
-              <Row label="Telefone" value={provider.googlePhone} />
-              <Row label="Website" value={provider.googleWebsite ? <a href={provider.googleWebsite} target="_blank" rel="noreferrer" className="text-cyan-400 hover:underline truncate block">{provider.googleWebsite}</a> : null} />
-              <Row label="Categoria" value={provider.googleCategory} />
-            </Section>
+          {(provider.googleRating || provider.googleAddress) && (
+            <section>
+              <h3 className="text-xs font-semibold text-cyan-400 uppercase tracking-wider mb-2">Google</h3>
+              <div className="space-y-1 text-sm">
+                {provider.googleRating && (
+                  <Row label="Rating" value={`${stars(provider.googleRating)} ${provider.googleRating} (${provider.googleReviews} avaliações)`} />
+                )}
+                {provider.googleAddress && <Row label="Endereço" value={provider.googleAddress} />}
+                {provider.googlePhone && <Row label="Telefone" value={provider.googlePhone} />}
+                {provider.googleWebsite && (
+                  <Row label="Site (Google)" value={<a href={provider.googleWebsite} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline truncate">{provider.googleWebsite}</a>} />
+                )}
+                {provider.googleCategory && <Row label="Categoria" value={provider.googleCategory} />}
+              </div>
+            </section>
           )}
 
           {/* Contato */}
           {(provider.websiteUrl || provider.instagramUrl || provider.facebookUrl) && (
-            <Section title="Contato">
-              <Row label="Site" value={provider.websiteUrl ? <a href={provider.websiteUrl} target="_blank" rel="noreferrer" className="text-cyan-400 hover:underline">{provider.websiteUrl}</a> : null} />
-              <Row label="Instagram" value={provider.instagramUrl ? <a href={provider.instagramUrl} target="_blank" rel="noreferrer" className="text-cyan-400 hover:underline">{provider.instagramUrl}</a> : null} />
-              <Row label="Facebook" value={provider.facebookUrl ? <a href={provider.facebookUrl} target="_blank" rel="noreferrer" className="text-cyan-400 hover:underline">{provider.facebookUrl}</a> : null} />
-            </Section>
+            <section>
+              <h3 className="text-xs font-semibold text-cyan-400 uppercase tracking-wider mb-2">Contato</h3>
+              <div className="space-y-1 text-sm">
+                {provider.websiteUrl && (
+                  <Row label="Website" value={<a href={provider.websiteUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline truncate">{provider.websiteUrl}</a>} />
+                )}
+                {provider.instagramUrl && (
+                  <Row label="Instagram" value={<a href={provider.instagramUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline truncate">{provider.instagramUrl}</a>} />
+                )}
+                {provider.facebookUrl && (
+                  <Row label="Facebook" value={<a href={provider.facebookUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline truncate">{provider.facebookUrl}</a>} />
+                )}
+              </div>
+            </section>
           )}
 
           {/* Planos */}
           {provider.plans.length > 0 && (
-            <Section title={`Planos (${provider.plans.length})`}>
-              <div className="space-y-2">
-                {provider.plans.map(pl => (
-                  <div key={pl.id} className="bg-gray-900 rounded-lg px-3 py-2 text-xs">
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-200 font-medium">{pl.name}</span>
-                      <span className="text-cyan-400 font-bold">R$ {pl.price.toFixed(2)}</span>
-                    </div>
-                    <div className="text-gray-500 mt-0.5">{pl.technology} · {pl.downloadSpeed} Mbps ↓ / {pl.uploadSpeed} Mbps ↑</div>
-                  </div>
-                ))}
+            <section>
+              <h3 className="text-xs font-semibold text-cyan-400 uppercase tracking-wider mb-2">Planos</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-gray-300">
+                  <thead>
+                    <tr className="text-gray-500 border-b border-gray-800">
+                      <th className="text-left py-1 pr-2">Nome</th>
+                      <th className="text-left py-1 pr-2">Tech</th>
+                      <th className="text-right py-1 pr-2">Down</th>
+                      <th className="text-right py-1">Preço</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {provider.plans.map((plan) => (
+                      <tr key={plan.id} className="border-b border-gray-900 hover:bg-gray-900/50">
+                        <td className="py-1 pr-2 truncate max-w-[100px]">{plan.name}</td>
+                        <td className="py-1 pr-2">{plan.technology}</td>
+                        <td className="py-1 pr-2 text-right">{plan.downloadSpeed}M</td>
+                        <td className="py-1 text-right text-green-400">R$ {plan.price.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            </Section>
+            </section>
           )}
 
           {/* Notas */}
-          <Section title="Notas">
+          <section>
+            <h3 className="text-xs font-semibold text-cyan-400 uppercase tracking-wider mb-2">Notas</h3>
             <textarea
-              className="w-full bg-gray-900 border border-gray-800 rounded-lg text-gray-200 text-sm p-3 resize-none outline-none focus:border-gray-600 min-h-28"
-              placeholder="Adicione observações sobre este provedor…"
               value={notes}
-              onChange={e => handleNotes(e.target.value)}
+              onChange={(e) => setNotes(e.target.value)}
+              onBlur={handleNotesBlur}
+              placeholder="Adicionar notas sobre este provedor..."
+              className="w-full bg-gray-900 border border-gray-800 rounded-lg p-3 text-sm text-gray-100 placeholder-gray-600 resize-none focus:outline-none focus:border-cyan-500/50 transition-colors"
+              rows={4}
             />
-            {saving && <p className="text-gray-600 text-xs mt-1">Salvando…</p>}
-          </Section>
+          </section>
         </div>
       </div>
-    </div>
-  )
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">{title}</h3>
-      <div className="space-y-1.5">{children}</div>
     </div>
   )
 }
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
-  if (!value) return null
   return (
-    <div className="flex gap-3">
-      <span className="text-gray-500 text-xs w-24 flex-shrink-0 pt-0.5">{label}</span>
-      <span className="text-gray-200 text-xs flex-1">{value}</span>
+    <div className="flex gap-2">
+      <span className="text-gray-500 flex-shrink-0 w-28">{label}:</span>
+      <span className="text-gray-200 flex-1 min-w-0">{value}</span>
     </div>
   )
 }
 
-export default function CrmPage() {
-  const [columns, setColumns] = useState<Column[]>([])
-  const [inboxCount, setInboxCount] = useState(0)
-  const [columnProviders, setColumnProviders] = useState<Record<string, Provider[]>>({})
-  const [columnPages, setColumnPages] = useState<Record<string, { page: number; pages: number; total: number }>>({})
-  const [loadingCols, setLoadingCols] = useState<Set<string>>(new Set())
-  const [search, setSearch] = useState('')
-  const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout>()
-  const [openProvider, setOpenProvider] = useState<Provider | null>(null)
-  const [dragId, setDragId] = useState<string | null>(null)
+// ── Job status bar ─────────────────────────────────────────────────────────────
+
+function JobStatusBar() {
   const [jobs, setJobs] = useState<EnrichJob[]>([])
-  const [addingCol, setAddingCol] = useState(false)
-  const [newColName, setNewColName] = useState('')
 
-  const loadColumns = useCallback(async () => {
-    const res = await fetch('/api/crm/columns')
-    const data = await res.json()
-    setColumns(data.columns || [])
-    setInboxCount(data.inbox || 0)
-  }, [])
-
-  const loadProviders = useCallback(async (colId: string, page = 1, s = search) => {
-    setLoadingCols(prev => new Set(prev).add(colId))
-    const res = await fetch(`/api/crm/providers?columnId=${colId}&page=${page}&search=${encodeURIComponent(s)}`)
-    const data = await res.json()
-    setColumnProviders(prev => ({
-      ...prev,
-      [colId]: page === 1 ? (data.providers || []) : [...(prev[colId] || []), ...(data.providers || [])],
-    }))
-    setColumnPages(prev => ({ ...prev, [colId]: { page, pages: data.pages || 1, total: data.total || 0 } }))
-    setLoadingCols(prev => { const s = new Set(prev); s.delete(colId); return s })
-  }, [search])
-
-  const loadJobs = useCallback(async () => {
-    const res = await fetch('/api/enrich/job')
-    const data = await res.json()
-    if (Array.isArray(data)) setJobs(data)
+  const fetchJobs = useCallback(async () => {
+    try {
+      const res = await fetch('/api/enrich/job')
+      if (res.ok) setJobs(await res.json())
+    } catch { /* ignore */ }
   }, [])
 
   useEffect(() => {
-    loadColumns()
-    loadJobs()
-    const interval = setInterval(loadJobs, 5000)
+    fetchJobs()
+    const interval = setInterval(fetchJobs, 5000)
     return () => clearInterval(interval)
-  }, [loadColumns, loadJobs])
+  }, [fetchJobs])
 
-  useEffect(() => {
-    if (columns.length === 0) return
-    const allIds = ['inbox', ...columns.map(c => c.id)]
-    allIds.forEach(id => loadProviders(id, 1, search))
-  }, [columns]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleSearch = (v: string) => {
-    setSearch(v)
-    clearTimeout(searchTimeout)
-    setSearchTimeout(setTimeout(() => {
-      const allIds = ['inbox', ...columns.map(c => c.id)]
-      allIds.forEach(id => loadProviders(id, 1, v))
-    }, 400))
+  async function handleAction(type: string, action: string) {
+    await fetch('/api/enrich/job', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, action }),
+    })
+    fetchJobs()
   }
 
-  const handleDrop = async (e: React.DragEvent, targetColumnId: string) => {
-    e.preventDefault()
-    if (!dragId) return
-    const provider = Object.values(columnProviders).flat().find(p => p.id === dragId)
-    if (!provider) return
-    const sourceColId = provider.crmColumnId || 'inbox'
-    if (sourceColId === targetColumnId) return
-
-    await fetch('/api/crm/move', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ providerId: dragId, columnId: targetColumnId === 'inbox' ? null : targetColumnId }) })
-    await Promise.all([loadProviders(sourceColId, 1), loadProviders(targetColumnId, 1)])
-    await loadColumns()
-    setDragId(null)
+  const typeLabels: Record<string, string> = {
+    google_places: 'Google Places',
+    cnpj: 'CNPJ',
   }
 
-  const handleRename = async (id: string, name: string) => {
-    await fetch(`/api/crm/columns/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) })
-    setColumns(prev => prev.map(c => c.id === id ? { ...c, name } : c))
+  const statusColors: Record<string, string> = {
+    idle: 'text-gray-500',
+    running: 'text-green-400',
+    paused: 'text-yellow-400',
+    done: 'text-cyan-400',
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Excluir coluna? Os provedores voltam para o Inbox.')) return
-    await fetch(`/api/crm/columns/${id}`, { method: 'DELETE' })
-    await loadColumns()
-    await loadProviders('inbox', 1)
-  }
-
-  const handleAddColumn = async () => {
-    if (!newColName.trim()) return
-    const color = COLORS[Math.floor(Math.random() * COLORS.length)]
-    await fetch('/api/crm/columns', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: newColName.trim(), color }) })
-    setNewColName(''); setAddingCol(false)
-    await loadColumns()
-  }
-
-  const toggleJob = async (type: string, currentStatus: string) => {
-    const action = currentStatus === 'running' ? 'pause' : 'start'
-    await fetch('/api/enrich/job', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type, action }) })
-    loadJobs()
-  }
-
-  const googleJob = jobs.find(j => j.type === 'google_places')
-  const cnpjJob = jobs.find(j => j.type === 'cnpj')
+  const allTypes = ['google_places', 'cnpj']
 
   return (
-    <div className="min-h-screen bg-gray-950 flex flex-col">
-      {/* Job status bar */}
-      {(googleJob || cnpjJob) && (
-        <div className="bg-gray-900 border-b border-gray-800 px-4 py-2 flex gap-6 items-center text-xs">
-          {googleJob && googleJob.status !== 'idle' && (
-            <div className="flex items-center gap-2">
-              <span className={`w-1.5 h-1.5 rounded-full ${googleJob.status === 'running' ? 'bg-green-400 animate-pulse' : 'bg-yellow-400'}`} />
-              <span className="text-gray-400">Google: <span className="text-gray-200">{googleJob.status === 'running' ? 'Rodando' : 'Pausado'}</span> · {googleJob.processed.toLocaleString('pt-BR')} processados</span>
-              <button onClick={() => toggleJob('google_places', googleJob.status)} className="text-cyan-400 hover:text-cyan-300 ml-1">
-                {googleJob.status === 'running' ? 'Pausar' : 'Retomar'}
-              </button>
+    <div className="bg-gray-900 border-b border-gray-800 px-4 py-2 flex items-center gap-6 flex-wrap">
+      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Enrich Jobs</span>
+      {allTypes.map((type) => {
+        const job = jobs.find((j) => j.type === type)
+        const status = job?.status ?? 'idle'
+        return (
+          <div key={type} className="flex items-center gap-2">
+            <span className="text-xs text-gray-400">{typeLabels[type] ?? type}:</span>
+            <span className={`text-xs font-semibold ${statusColors[status] ?? 'text-gray-400'}`}>{status}</span>
+            {job && <span className="text-xs text-gray-600">({job.processed} processados)</span>}
+            <div className="flex gap-1">
+              {status !== 'running' && (
+                <button
+                  onClick={() => handleAction(type, 'start')}
+                  className="text-xs bg-green-900/50 hover:bg-green-800/60 text-green-400 px-2 py-0.5 rounded transition-colors"
+                >
+                  ▶
+                </button>
+              )}
+              {status === 'running' && (
+                <button
+                  onClick={() => handleAction(type, 'pause')}
+                  className="text-xs bg-yellow-900/50 hover:bg-yellow-800/60 text-yellow-400 px-2 py-0.5 rounded transition-colors"
+                >
+                  ⏸
+                </button>
+              )}
+              {status !== 'idle' && (
+                <button
+                  onClick={() => handleAction(type, 'stop')}
+                  className="text-xs bg-red-900/50 hover:bg-red-800/60 text-red-400 px-2 py-0.5 rounded transition-colors"
+                >
+                  ■
+                </button>
+              )}
             </div>
-          )}
-          {cnpjJob && cnpjJob.status !== 'idle' && (
-            <div className="flex items-center gap-2">
-              <span className={`w-1.5 h-1.5 rounded-full ${cnpjJob.status === 'running' ? 'bg-green-400 animate-pulse' : 'bg-yellow-400'}`} />
-              <span className="text-gray-400">CNPJ: <span className="text-gray-200">{cnpjJob.status === 'running' ? 'Rodando' : 'Pausado'}</span> · {cnpjJob.processed.toLocaleString('pt-BR')} verificados</span>
-              <button onClick={() => toggleJob('cnpj', cnpjJob.status)} className="text-cyan-400 hover:text-cyan-300 ml-1">
-                {cnpjJob.status === 'running' ? 'Pausar' : 'Retomar'}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
-      {/* Toolbar */}
-      <div className="px-4 py-3 border-b border-gray-800 flex items-center gap-4">
-        <h1 className="text-white font-bold text-lg">CRM Provedores</h1>
-        <input
-          type="search"
-          placeholder="Buscar provedor…"
-          value={search}
-          onChange={e => handleSearch(e.target.value)}
-          className="flex-1 max-w-sm bg-gray-900 border border-gray-800 rounded-lg px-3 py-1.5 text-sm text-gray-200 placeholder-gray-600 outline-none focus:border-gray-600"
-        />
-        <div className="ml-auto flex gap-2">
-          <button
-            onClick={() => { setAddingCol(true); setTimeout(() => document.getElementById('new-col-input')?.focus(), 50) }}
-            className="bg-gray-800 hover:bg-gray-700 text-gray-200 text-sm px-3 py-1.5 rounded-lg border border-gray-700"
-          >+ Nova coluna</button>
+// ── Main page ─────────────────────────────────────────────────────────────────
+
+export default function CrmPage() {
+  const [columns, setColumns] = useState<CrmColumn[]>([])
+  const [providers, setProviders] = useState<Record<string, Provider[]>>({})
+  const [counts, setCounts] = useState<Record<string, number>>({})
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null)
+  const [addingColumn, setAddingColumn] = useState(false)
+  const [newColumnName, setNewColumnName] = useState('')
+  const [newColumnColor, setNewColumnColor] = useState('#6b7280')
+  const dragRef = useRef<{ providerId: string; sourceColumnId: string } | null>(null)
+
+  // Debounce search
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(t)
+  }, [search])
+
+  const fetchColumns = useCallback(async () => {
+    try {
+      const res = await fetch('/api/crm/columns')
+      if (res.ok) setColumns(await res.json())
+    } catch { /* ignore */ }
+  }, [])
+
+  const fetchProviders = useCallback(async (columnId: string) => {
+    try {
+      const params = new URLSearchParams({ columnId })
+      if (debouncedSearch) params.set('search', debouncedSearch)
+      const res = await fetch(`/api/crm/providers?${params}`)
+      if (res.ok) {
+        const data = await res.json()
+        setProviders((prev) => ({ ...prev, [columnId]: data.providers }))
+        setCounts((prev) => ({ ...prev, [columnId]: data.total }))
+      }
+    } catch { /* ignore */ }
+  }, [debouncedSearch])
+
+  useEffect(() => {
+    fetchColumns()
+  }, [fetchColumns])
+
+  // Fetch providers for all columns (including inbox) when columns or search changes
+  useEffect(() => {
+    const allIds = ['inbox', ...columns.map((c) => c.id)]
+    allIds.forEach((id) => fetchProviders(id))
+  }, [columns, fetchProviders, debouncedSearch])
+
+  function handleDragStart(e: React.DragEvent, providerId: string, sourceColumnId: string) {
+    dragRef.current = { providerId, sourceColumnId }
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  async function handleDrop(e: React.DragEvent, targetColumnId: string) {
+    e.preventDefault()
+    if (!dragRef.current) return
+    const { providerId, sourceColumnId } = dragRef.current
+    dragRef.current = null
+    if (sourceColumnId === targetColumnId) return
+
+    await fetch('/api/crm/move', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ providerId, columnId: targetColumnId }),
+    })
+
+    // Refetch both affected columns
+    fetchProviders(sourceColumnId)
+    fetchProviders(targetColumnId)
+    fetchColumns() // update counts
+  }
+
+  async function handleRename(id: string, name: string) {
+    await fetch(`/api/crm/columns/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+    fetchColumns()
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('Deletar coluna? Os provedores voltarão para Inbox.')) return
+    await fetch(`/api/crm/columns/${id}`, { method: 'DELETE' })
+    fetchColumns()
+    fetchProviders('inbox')
+  }
+
+  async function handleAddColumn() {
+    if (!newColumnName.trim()) return
+    await fetch('/api/crm/columns', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newColumnName.trim(), color: newColumnColor }),
+    })
+    setNewColumnName('')
+    setNewColumnColor('#6b7280')
+    setAddingColumn(false)
+    fetchColumns()
+  }
+
+  async function handleNotesSave(id: string, notes: string) {
+    await fetch(`/api/crm/providers/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ crmNotes: notes }),
+    })
+    // Update local state
+    setProviders((prev) => {
+      const updated = { ...prev }
+      for (const key of Object.keys(updated)) {
+        updated[key] = updated[key].map((p) =>
+          p.id === id ? { ...p, crmNotes: notes } : p
+        )
+      }
+      return updated
+    })
+    if (selectedProvider?.id === id) {
+      setSelectedProvider((p) => p ? { ...p, crmNotes: notes } : p)
+    }
+  }
+
+  const allColumnDefs = [
+    { id: 'inbox', name: 'Inbox', color: '#06b6d4', isInbox: true },
+    ...columns.map((c) => ({ id: c.id, name: c.name, color: c.color, isInbox: false })),
+  ]
+
+  return (
+    <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
+      {/* Job status bar */}
+      <JobStatusBar />
+
+      {/* Top bar */}
+      <div className="flex items-center gap-4 px-6 py-3 border-b border-gray-800">
+        <div className="flex items-center gap-2">
+          <a href="/anatel" className="text-gray-500 hover:text-gray-300 text-sm transition-colors">← Início</a>
+          <span className="text-gray-700">/</span>
+          <span className="text-gray-100 font-semibold">CRM</span>
+        </div>
+        <div className="flex-1 max-w-sm">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar provedores..."
+            className="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-1.5 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-cyan-500/50 transition-colors"
+          />
         </div>
       </div>
 
       {/* Board */}
       <div className="flex-1 overflow-x-auto">
-        <div className="flex gap-3 p-4 min-w-max min-h-full">
-          {/* Inbox */}
-          <ColumnPanel
-            column={null}
-            providers={columnProviders['inbox'] || []}
-            total={inboxCount}
-            pages={columnPages['inbox']?.pages || 1}
-            page={columnPages['inbox']?.page || 1}
-            loading={loadingCols.has('inbox')}
-            onLoadMore={() => loadProviders('inbox', (columnPages['inbox']?.page || 1) + 1)}
-            onDrop={handleDrop}
-            onDragOver={e => e.preventDefault()}
-            onOpen={setOpenProvider}
-            onDragStart={(e, p) => { e.dataTransfer.effectAllowed = 'move'; setDragId(p.id) }}
-          />
-
-          {/* User columns */}
-          {columns.map((col, idx) => (
-            <ColumnPanel
+        <div className="flex gap-4 p-6 min-w-max h-full">
+          {allColumnDefs.map((col) => (
+            <KanbanColumn
               key={col.id}
-              column={{ id: col.id, name: col.name, color: col.color, count: col._count?.providers ?? (columnPages[col.id]?.total || 0) }}
-              providers={columnProviders[col.id] || []}
-              total={columnPages[col.id]?.total || 0}
-              pages={columnPages[col.id]?.pages || 1}
-              page={columnPages[col.id]?.page || 1}
-              loading={loadingCols.has(col.id)}
-              onLoadMore={() => loadProviders(col.id, (columnPages[col.id]?.page || 1) + 1)}
+              id={col.id}
+              name={col.name}
+              color={col.color}
+              count={counts[col.id] ?? 0}
+              providers={providers[col.id] ?? []}
+              isInbox={col.isInbox}
+              onDragStart={handleDragStart}
               onDrop={handleDrop}
-              onDragOver={e => e.preventDefault()}
-              onOpen={setOpenProvider}
-              onDragStart={(e, p) => { e.dataTransfer.effectAllowed = 'move'; setDragId(p.id) }}
+              onCardClick={setSelectedProvider}
               onRename={handleRename}
               onDelete={handleDelete}
-              onAddColumn={idx === columns.length - 1 ? () => { setAddingCol(true); setTimeout(() => document.getElementById('new-col-input')?.focus(), 50) } : undefined}
             />
           ))}
 
-          {/* Add column inline */}
-          {addingCol && (
-            <div className="flex-shrink-0 w-72 bg-gray-900 border border-gray-700 rounded-xl p-3 flex flex-col gap-2 self-start">
-              <p className="text-gray-400 text-xs font-semibold uppercase tracking-wide">Nova coluna</p>
-              <input
-                id="new-col-input"
-                className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200 outline-none focus:border-gray-500"
-                placeholder="Nome da coluna"
-                value={newColName}
-                onChange={e => setNewColName(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleAddColumn(); if (e.key === 'Escape') setAddingCol(false) }}
-              />
-              <div className="flex gap-2">
-                <button onClick={handleAddColumn} className="flex-1 bg-cyan-600 hover:bg-cyan-500 text-white text-sm rounded-lg py-1.5">Criar</button>
-                <button onClick={() => setAddingCol(false)} className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-400 text-sm rounded-lg py-1.5">Cancelar</button>
+          {/* Add column */}
+          <div className="flex-shrink-0 w-72">
+            {addingColumn ? (
+              <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-3 space-y-2">
+                <input
+                  value={newColumnName}
+                  onChange={(e) => setNewColumnName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleAddColumn(); if (e.key === 'Escape') setAddingColumn(false) }}
+                  placeholder="Nome da coluna"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-cyan-500/50"
+                  autoFocus
+                />
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-500">Cor:</label>
+                  <input
+                    type="color"
+                    value={newColumnColor}
+                    onChange={(e) => setNewColumnColor(e.target.value)}
+                    className="w-8 h-8 rounded cursor-pointer bg-transparent border-0"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleAddColumn}
+                    className="flex-1 bg-cyan-600 hover:bg-cyan-500 text-white text-sm py-1.5 rounded-lg transition-colors"
+                  >
+                    Criar
+                  </button>
+                  <button
+                    onClick={() => setAddingColumn(false)}
+                    className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm py-1.5 rounded-lg transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
-
-          {/* "+" button if no columns yet */}
-          {columns.length === 0 && !addingCol && (
-            <button
-              onClick={() => { setAddingCol(true) }}
-              className="flex-shrink-0 w-72 h-24 border border-dashed border-gray-800 rounded-xl text-gray-600 hover:text-gray-400 hover:border-gray-600 transition-colors self-start"
-            >+ Nova coluna</button>
-          )}
+            ) : (
+              <button
+                onClick={() => setAddingColumn(true)}
+                className="w-full h-12 border-2 border-dashed border-gray-800 hover:border-cyan-500/50 text-gray-600 hover:text-cyan-400 rounded-xl text-sm font-medium transition-colors"
+              >
+                + Nova coluna
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Ficha modal */}
-      {openProvider && (
-        <FichaModal
-          provider={openProvider}
-          onClose={() => setOpenProvider(null)}
-          onSaveNotes={(id, notes) => {
-            setOpenProvider(prev => prev?.id === id ? { ...prev, crmNotes: notes } : prev)
-          }}
+      {/* Provider modal */}
+      {selectedProvider && (
+        <ProviderModal
+          provider={selectedProvider}
+          onClose={() => setSelectedProvider(null)}
+          onNotesSave={handleNotesSave}
         />
       )}
     </div>
