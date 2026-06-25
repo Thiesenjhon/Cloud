@@ -567,10 +567,12 @@ export default function CrmPage() {
 
       {/* Top bar */}
       <div className="flex items-center gap-4 px-6 py-3 border-b border-gray-800">
-        <div className="flex items-center gap-2">
-          <a href="/anatel" className="text-gray-500 hover:text-gray-300 text-sm transition-colors">← Início</a>
+        <div className="flex items-center gap-3">
+          <a href="/anatel" className="text-gray-500 hover:text-gray-300 text-sm transition-colors">← Dashboard</a>
           <span className="text-gray-700">/</span>
-          <span className="text-gray-100 font-semibold">CRM</span>
+          <span className="text-cyan-400 font-semibold text-sm">CRM Provedores</span>
+          <a href="/anatel/coleta" className="text-gray-500 hover:text-gray-300 text-sm transition-colors ml-2">Coleta</a>
+          <a href="/anatel/pesquisa" className="text-gray-500 hover:text-gray-300 text-sm transition-colors">Pesquisa</a>
         </div>
         <div className="flex-1 max-w-sm">
           <input

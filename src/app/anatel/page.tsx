@@ -91,13 +91,16 @@ export default function AnatelDashboard() {
               </div>
             </div>
             <nav className="flex items-center gap-2">
+              <Link href="/anatel/crm" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 hover:bg-cyan-500/20 transition-all">
+                <Building2 className="w-3.5 h-3.5" /> CRM
+              </Link>
               <Link href="/anatel/pesquisa" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-800 transition-all">
                 <Search className="w-3.5 h-3.5" /> Pesquisar
               </Link>
               <Link href="/anatel/coleta" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-800 transition-all">
                 <Database className="w-3.5 h-3.5" /> Coleta
               </Link>
-              <Link href="/anatel/analise" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 hover:bg-cyan-500/20 transition-all">
+              <Link href="/anatel/analise" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-800 transition-all">
                 <BarChart3 className="w-3.5 h-3.5" /> Análise
               </Link>
             </nav>
