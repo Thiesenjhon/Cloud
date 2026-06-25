@@ -1,8 +1,19 @@
 'use client'
 
-import { useState } from 'react'
-import { ArrowLeft, Play, Pause, CheckCircle, XCircle, Clock, Globe, MapPin, Brain, Database, Zap, Download } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { ArrowLeft, Download, CheckCircle, Clock, AlertCircle, BarChart3, Database, Play, Search, MapPin } from 'lucide-react'
 import Link from 'next/link'
+
+interface StateData {
+  uf: string
+  status: 'pending' | 'running' | 'done' | 'error'
+  totalProviders: number
+  enrichedCount: number
+  scrapedCount: number
+  plansCount: number
+  startedAt: string | null
+  finishedAt: string | null
+}
 
 interface ImportResult {
   imported: number
@@ -11,70 +22,70 @@ interface ImportResult {
   total: number
 }
 
-interface JobStatus {
-  type: string
-  status: 'idle' | 'running' | 'done' | 'error'
-  progress: number
-  total: number
-  processed: number
-  errors: number
-  log: string[]
+const BRAZIL_STATES = ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO']
+
+const STATE_NAMES: Record<string, string> = {
+  AC:'Acre', AL:'Alagoas', AM:'Amazonas', AP:'Amapá', BA:'Bahia', CE:'Ceará', DF:'Distrito Federal',
+  ES:'Espírito Santo', GO:'Goiás', MA:'Maranhão', MG:'Minas Gerais', MS:'Mato Grosso do Sul',
+  MT:'Mato Grosso', PA:'Pará', PB:'Paraíba', PE:'Pernambuco', PI:'Piauí', PR:'Paraná',
+  RJ:'Rio de Janeiro', RN:'Rio Grande do Norte', RO:'Rondônia', RR:'Roraima', RS:'Rio Grande do Sul',
+  SC:'Santa Catarina', SE:'Sergipe', SP:'São Paulo', TO:'Tocantins',
 }
 
-const defaultJob: JobStatus = { type: '', status: 'idle', progress: 0, total: 0, processed: 0, errors: 0, log: [] }
+const STATUS_COLORS = {
+  pending: 'bg-gray-800 border-gray-700 text-gray-400',
+  running: 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400',
+  done: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
+  error: 'bg-red-500/10 border-red-500/30 text-red-400',
+}
 
-const TABS = ['test', 'jobs', 'config'] as const
-type Tab = typeof TABS[number]
-const TAB_LABELS: Record<Tab, string> = { test: 'Testar Extração', jobs: 'Jobs em Lote', config: 'Configuração' }
+const STATUS_ICONS = {
+  pending: <Clock className="w-3 h-3" />,
+  running: <Clock className="w-3 h-3 animate-spin" />,
+  done: <CheckCircle className="w-3 h-3" />,
+  error: <AlertCircle className="w-3 h-3" />,
+}
 
 export default function ColetaPage() {
-  const [tab, setTab] = useState<Tab>('test')
+  const [states, setStates] = useState<StateData[]>([])
+  const [selectedUf, setSelectedUf] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
-  const [websiteUrl, setWebsiteUrl] = useState('')
-  const [providerName, setProviderName] = useState('')
-  const [testResult, setTestResult] = useState<string | null>(null)
-  const [testLoading, setTestLoading] = useState(false)
-  const [jobs] = useState<Record<string, JobStatus>>({
-    google_places: { ...defaultJob, type: 'Google Places' },
-    website_scrape: { ...defaultJob, type: 'Website + IA' },
-  })
+  const [researchingUf, setResearchingUf] = useState<string | null>(null)
 
-  async function testWebsiteScrape() {
-    if (!websiteUrl || !providerName) return
-    setTestLoading(true); setTestResult(null)
+  async function loadStates() {
     try {
-      const res = await fetch('/api/enrich/website', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ websiteUrl, providerName }) })
-      setTestResult(JSON.stringify(await res.json(), null, 2))
-    } catch (e) { setTestResult('Erro: ' + String(e)) }
-    finally { setTestLoading(false) }
+      const res = await fetch('/api/states/research')
+      const data = await res.json()
+      setStates(data.states || [])
+    } catch { /* ignore */ }
   }
 
-  async function testGooglePlaces() {
-    if (!providerName) return
-    setTestLoading(true); setTestResult(null)
-    try {
-      const res = await fetch('/api/enrich/google-places', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ companyName: providerName, municipio: 'São Paulo', uf: 'SP' }) })
-      setTestResult(JSON.stringify(await res.json(), null, 2))
-    } catch (e) { setTestResult('Erro: ' + String(e)) }
-    finally { setTestLoading(false) }
-  }
+  useEffect(() => { loadStates() }, [])
 
   async function importAnatel() {
     setImporting(true); setImportResult(null)
     try {
       const res = await fetch('/api/import/anatel', { method: 'POST' })
-      setImportResult(await res.json())
-    } catch (e) { setImportResult({ imported: 0, skipped: 0, source: 'error', total: 0 }) }
+      const data = await res.json()
+      setImportResult(data)
+      await loadStates()
+    } catch { setImportResult({ imported: 0, skipped: 0, source: 'error', total: 0 }) }
     finally { setImporting(false) }
   }
 
-  const statusIcon = (status: string) => {
-    if (status === 'running') return <Clock className="w-4 h-4 text-cyan-400 animate-spin" />
-    if (status === 'done') return <CheckCircle className="w-4 h-4 text-emerald-400" />
-    if (status === 'error') return <XCircle className="w-4 h-4 text-red-400" />
-    return <Clock className="w-4 h-4 text-gray-600" />
+  async function startResearch(uf: string) {
+    setResearchingUf(uf)
+    try {
+      await fetch(`/api/states/${uf}/research`, { method: 'POST' })
+      await loadStates()
+    } finally { setResearchingUf(null) }
   }
+
+  const selected = states.find(s => s.uf === selectedUf)
+  const totalDone = states.filter(s => s.status === 'done').length
+  const totalProviders = states.reduce((a, s) => a + s.totalProviders, 0)
+  const totalPlans = states.reduce((a, s) => a + s.plansCount, 0)
 
   return (
     <div className="min-h-screen bg-gray-950">
@@ -89,171 +100,150 @@ export default function ColetaPage() {
               <Database className="w-4 h-4 text-cyan-400" />
               <h1 className="text-base font-semibold text-white">Coleta de Dados</h1>
             </div>
-            <span className="text-xs text-gray-500">Pipeline de enriquecimento de provedores</span>
+            <span className="text-xs text-gray-500">Pesquisa estado por estado · Progresso do Brasil</span>
           </div>
         </div>
       </header>
 
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
-        {/* Tabs */}
-        <div className="flex gap-1 p-1 bg-gray-900 border border-gray-800 rounded-lg w-fit">
-          {TABS.map(t => (
-            <button key={t} onClick={() => setTab(t)}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${tab === t ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300'}`}>
-              {TAB_LABELS[t]}
-            </button>
+        {/* KPIs */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { label: 'Estados pesquisados', value: `${totalDone}/27`, color: 'text-cyan-400' },
+            { label: 'Provedores no banco', value: totalProviders.toLocaleString('pt-BR'), color: 'text-emerald-400' },
+            { label: 'Planos coletados', value: totalPlans.toLocaleString('pt-BR'), color: 'text-violet-400' },
+            { label: 'Progresso geral', value: `${Math.round((totalDone / 27) * 100)}%`, color: 'text-amber-400' },
+          ].map(k => (
+            <div key={k.label} className="rounded-xl border border-gray-800 bg-gray-900 p-4">
+              <p className={`text-2xl font-bold ${k.color}`}>{k.value}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{k.label}</p>
+            </div>
           ))}
         </div>
 
-        {tab === 'test' && (
-          <div className="rounded-xl border border-gray-800 bg-gray-900 p-5 space-y-5">
+        {/* Import ANATEL */}
+        <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-5">
+          <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-sm font-semibold text-white mb-0.5">Teste de Extração Manual</h2>
-              <p className="text-xs text-gray-500">Teste a coleta em um provedor específico antes de rodar em lote</p>
+              <div className="flex items-center gap-2 mb-1">
+                <Download className="w-4 h-4 text-cyan-400" />
+                <h3 className="text-sm font-semibold text-white">Passo 1 — Importar base ANATEL</h3>
+              </div>
+              <p className="text-xs text-gray-400">Baixa todos os provedores cadastrados na ANATEL (dados.gov.br) e salva no banco. Execute uma vez.</p>
+              {importResult && (
+                <p className={`mt-2 text-xs ${importResult.source === 'error' ? 'text-red-400' : 'text-emerald-400'}`}>
+                  {importResult.source === 'error' ? 'Erro na importação.' : `✓ ${importResult.imported.toLocaleString('pt-BR')} provedores importados · fonte: ${importResult.source}`}
+                </p>
+              )}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-medium text-gray-400 mb-1.5 block">Nome do Provedor</label>
-                <input placeholder="Ex: Net Fibra Telecom" value={providerName} onChange={e => setProviderName(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-cyan-500/50 transition-all" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-400 mb-1.5 block">Site do Provedor</label>
-                <input placeholder="Ex: https://netfibra.com.br" value={websiteUrl} onChange={e => setWebsiteUrl(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-cyan-500/50 transition-all" />
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={testGooglePlaces} disabled={testLoading || !providerName}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-700 text-sm text-gray-300 hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
-                <MapPin className="w-4 h-4" /> Testar Google Places
-              </button>
-              <button onClick={testWebsiteScrape} disabled={testLoading || !websiteUrl || !providerName}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-sm text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all">
-                <Brain className="w-4 h-4" /> Testar Scraping + IA
-              </button>
-            </div>
-            {testLoading && (
-              <div className="flex items-center gap-2 text-sm text-cyan-400">
-                <Clock className="w-4 h-4 animate-spin" /> Processando...
-              </div>
-            )}
-            {testResult && (
-              <div>
-                <label className="text-xs font-medium text-gray-400 mb-1.5 block">Resultado</label>
-                <pre className="bg-gray-950 border border-gray-800 text-emerald-400 p-4 rounded-lg text-xs overflow-auto max-h-96 whitespace-pre-wrap font-mono">{testResult}</pre>
-              </div>
-            )}
+            <button onClick={importAnatel} disabled={importing}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-sm text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all whitespace-nowrap">
+              {importing ? <><Clock className="w-4 h-4 animate-spin" /> Importando...</> : <><Download className="w-4 h-4" /> Importar Agora</>}
+            </button>
           </div>
-        )}
+        </div>
 
-        {tab === 'jobs' && (
-          <div className="space-y-4">
-            {/* ANATEL Import */}
-            <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <Download className="w-4 h-4 text-cyan-400" />
-                    <h3 className="text-sm font-semibold text-white">Importar Provedores ANATEL</h3>
-                  </div>
-                  <p className="text-xs text-gray-400">Busca os dados oficiais do dados.gov.br e salva no banco de dados. Execute isso primeiro.</p>
-                  {importResult && (
-                    <div className="mt-2 text-xs">
-                      {importResult.source === 'error' ? (
-                        <span className="text-red-400">Erro na importação</span>
-                      ) : (
-                        <span className="text-emerald-400">
-                          ✓ {importResult.imported} importados · {importResult.skipped} ignorados · fonte: {importResult.source}
-                        </span>
-                      )}
-                    </div>
-                  )}
+        {/* Brazil Map Grid */}
+        <div className="rounded-xl border border-gray-800 bg-gray-900 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-sm font-semibold text-white">Passo 2 — Pesquisar por Estado</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Clique em um estado para ver detalhes e iniciar a coleta</p>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-gray-500">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-gray-700 inline-block" />Pendente</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-cyan-500/30 inline-block" />Em andamento</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-500/30 inline-block" />Concluído</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-9 gap-2">
+            {BRAZIL_STATES.map(uf => {
+              const st = states.find(s => s.uf === uf)
+              const status = st?.status || 'pending'
+              const isSelected = selectedUf === uf
+              return (
+                <button key={uf} onClick={() => setSelectedUf(isSelected ? null : uf)}
+                  className={`relative rounded-lg border p-2 text-center transition-all ${STATUS_COLORS[status]} ${isSelected ? 'ring-2 ring-cyan-500' : 'hover:border-gray-600'}`}>
+                  <div className="text-xs font-bold">{uf}</div>
+                  {st?.totalProviders ? <div className="text-xs opacity-60 mt-0.5">{st.totalProviders}</div> : null}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Selected State Detail */}
+        {selectedUf && selected !== undefined && (
+          <div className="rounded-xl border border-gray-700 bg-gray-900 p-5 space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-semibold text-white">{STATE_NAMES[selectedUf]} ({selectedUf})</h3>
+                <div className="flex items-center gap-2 mt-1">
+                  {STATUS_ICONS[selected?.status || 'pending']}
+                  <span className="text-xs text-gray-400 capitalize">{selected?.status === 'done' ? 'Pesquisa concluída' : selected?.status === 'running' ? 'Em andamento' : 'Não pesquisado'}</span>
                 </div>
-                <button onClick={importAnatel} disabled={importing}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-sm text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all whitespace-nowrap">
-                  {importing ? <Clock className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                  {importing ? 'Importando...' : 'Importar Agora'}
+              </div>
+              <div className="flex gap-2">
+                <Link href={`/anatel/pesquisa?uf=${selectedUf}`}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-700 text-xs text-gray-300 hover:bg-gray-800 transition-all">
+                  <Search className="w-3 h-3" /> Ver Provedores
+                </Link>
+                <button onClick={() => startResearch(selectedUf)} disabled={researchingUf === selectedUf}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs text-white disabled:opacity-40 transition-all">
+                  {researchingUf === selectedUf ? <Clock className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                  Iniciar Pesquisa
                 </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {Object.entries(jobs).map(([key, job]) => (
-                <div key={key} className="rounded-xl border border-gray-800 bg-gray-900 p-5 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      {key === 'google_places' ? <Globe className="w-4 h-4 text-cyan-400" /> : <Brain className="w-4 h-4 text-violet-400" />}
-                      <span className="text-sm font-semibold text-white">{job.type}</span>
-                    </div>
-                    {statusIcon(job.status)}
-                  </div>
-                  <p className="text-xs text-gray-500">
-                    {key === 'google_places' ? 'Busca endereço, telefone, avaliações e site no Google' : 'Scraping do site + extração de planos com Claude AI'}
-                  </p>
-                  <div>
-                    <div className="flex justify-between text-xs text-gray-500 mb-1.5">
-                      <span>{job.processed} / {job.total || '?'} processados</span>
-                      <span>{job.errors} erros</span>
-                    </div>
-                    <div className="w-full bg-gray-800 rounded-full h-1.5">
-                      <div className="h-1.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all"
-                        style={{ width: `${job.total ? (job.processed / job.total) * 100 : 0}%` }} />
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button disabled={job.status === 'running'}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs text-white disabled:opacity-40 transition-all">
-                      <Play className="w-3 h-3" /> Iniciar
-                    </button>
-                    <button disabled={job.status !== 'running'}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-700 text-xs text-gray-400 hover:text-white disabled:opacity-40 transition-all">
-                      <Pause className="w-3 h-3" /> Pausar
-                    </button>
-                  </div>
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: 'Provedores', value: selected?.totalProviders || 0, color: 'text-white' },
+                { label: 'Enriquecidos', value: selected?.enrichedCount || 0, color: 'text-cyan-400' },
+                { label: 'Planos coletados', value: selected?.plansCount || 0, color: 'text-emerald-400' },
+              ].map(m => (
+                <div key={m.label} className="rounded-lg bg-gray-800 p-3 text-center">
+                  <p className={`text-xl font-bold ${m.color}`}>{m.value.toLocaleString('pt-BR')}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{m.label}</p>
                 </div>
               ))}
             </div>
-            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
-              <div className="flex items-start gap-2">
-                <Zap className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
-                <p className="text-xs text-amber-300">
-                  Para processar todos os ~19k provedores, recomendamos executar o pipeline em background com rate limiting para respeitar os limites das APIs.
-                </p>
+
+            {(selected?.totalProviders || 0) > 0 && (
+              <div className="space-y-2">
+                <div>
+                  <div className="flex justify-between text-xs text-gray-500 mb-1">
+                    <span>Enriquecimento Google</span>
+                    <span>{selected?.enrichedCount || 0} / {selected?.totalProviders || 0}</span>
+                  </div>
+                  <div className="w-full bg-gray-800 rounded-full h-1.5">
+                    <div className="h-1.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all"
+                      style={{ width: `${selected?.totalProviders ? ((selected.enrichedCount / selected.totalProviders) * 100) : 0}%` }} />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between text-xs text-gray-500 mb-1">
+                    <span>Scraping de sites</span>
+                    <span>{selected?.scrapedCount || 0} / {selected?.totalProviders || 0}</span>
+                  </div>
+                  <div className="w-full bg-gray-800 rounded-full h-1.5">
+                    <div className="h-1.5 rounded-full bg-gradient-to-r from-violet-500 to-pink-500 transition-all"
+                      style={{ width: `${selected?.totalProviders ? ((selected.scrapedCount / selected.totalProviders) * 100) : 0}%` }} />
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
-        {tab === 'config' && (
-          <div className="rounded-xl border border-gray-800 bg-gray-900 p-5 space-y-5">
-            <div>
-              <h2 className="text-sm font-semibold text-white mb-0.5">Variáveis de Ambiente</h2>
-              <p className="text-xs text-gray-500">Configure no Vercel → Environment Variables</p>
-            </div>
-            <div className="space-y-2">
-              {[
-                { key: 'DATABASE_URL', desc: 'PostgreSQL connection string (Neon, Supabase, Railway)', required: true },
-                { key: 'GOOGLE_PLACES_API_KEY', desc: 'Google Cloud Console → APIs → Places API', required: true },
-                { key: 'ANTHROPIC_API_KEY', desc: 'console.anthropic.com → API Keys', required: true },
-              ].map(env => (
-                <div key={env.key} className="flex items-start gap-3 p-3 bg-gray-800 border border-gray-700 rounded-lg">
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium mt-0.5 whitespace-nowrap">✓ ativo</span>
-                  <div>
-                    <code className="text-sm font-mono text-cyan-300">{env.key}</code>
-                    <p className="text-xs text-gray-500 mt-0.5">{env.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="bg-gray-950 border border-gray-800 rounded-lg p-4">
-              <pre className="text-xs text-emerald-400 font-mono whitespace-pre-wrap">{`# .env.local
-DATABASE_URL="postgresql://user:pass@host:5432/db"
-GOOGLE_PLACES_API_KEY="AIza..."
-ANTHROPIC_API_KEY="sk-ant-..."`}</pre>
-            </div>
-          </div>
-        )}
+        {/* Tip */}
+        <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4 flex items-start gap-3">
+          <BarChart3 className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+          <p className="text-xs text-gray-500">
+            Depois de importar e pesquisar cada estado, acesse <Link href="/anatel/analise" className="text-cyan-400 hover:underline">Análise Comparativa</Link> para ver gráficos de preços, tecnologias e SVAs por estado e região. Ou use <Link href="/anatel/pesquisa" className="text-cyan-400 hover:underline">Pesquisar Provedores</Link> para buscar por cidade.
+          </p>
+        </div>
       </div>
     </div>
   )
