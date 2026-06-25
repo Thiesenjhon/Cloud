@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+export const dynamic = 'force-dynamic'
 import { getMockProviders } from '@/lib/anatel'
 
 export async function GET() {

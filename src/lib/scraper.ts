@@ -1,5 +1,3 @@
-import * as cheerio from 'cheerio'
-
 export interface ScrapedPage {
   url: string
   title: string
@@ -7,6 +5,63 @@ export interface ScrapedPage {
   planSections: string[]
   priceElements: string[]
   speedElements: string[]
+}
+
+function extractText(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<nav[\s\S]*?<\/nav>/gi, '')
+    .replace(/<footer[\s\S]*?<\/footer>/gi, '')
+    .replace(/<header[\s\S]*?<\/header>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function extractTitle(html: string): string {
+  const match = html.match(/<title[^>]*>([^<]*)<\/title>/i)
+  return match ? match[1].trim() : ''
+}
+
+function extractSections(html: string): string[] {
+  const planKeywords = ['plano', 'pacote', 'fibra', 'internet', 'velocidade', 'mega', 'mbps', 'giga']
+  const sections: string[] = []
+  const tagPattern = /<(section|div|article)[^>]*>([\s\S]*?)<\/\1>/gi
+  let match
+  while ((match = tagPattern.exec(html)) !== null) {
+    const content = extractText(match[2])
+    const lower = content.toLowerCase()
+    const hits = planKeywords.filter(k => lower.includes(k))
+    if (hits.length >= 2 && content.length > 50 && content.length < 2000) {
+      sections.push(content)
+    }
+  }
+  return Array.from(new Set(sections)).slice(0, 10)
+}
+
+function extractPrices(text: string): string[] {
+  const results: string[] = []
+  const re = /R\$\s*\d[\d.,]*.{0,50}/g
+  let m
+  while ((m = re.exec(text)) !== null) {
+    results.push(m[0].slice(0, 200))
+  }
+  return Array.from(new Set(results)).slice(0, 20)
+}
+
+function extractSpeeds(text: string): string[] {
+  const results: string[] = []
+  const re = /\d+\s*(Mbps|Gbps|MB|GB|mega|giga).{0,50}/gi
+  let m
+  while ((m = re.exec(text)) !== null) {
+    results.push(m[0].slice(0, 200))
+  }
+  return Array.from(new Set(results)).slice(0, 20)
 }
 
 export async function scrapeProviderWebsite(url: string): Promise<ScrapedPage | null> {
@@ -29,51 +84,13 @@ export async function scrapeProviderWebsite(url: string): Promise<ScrapedPage | 
     if (!response.ok) return null
 
     const html = await response.text()
-    const $ = cheerio.load(html)
+    const title = extractTitle(html)
+    const text = extractText(html).slice(0, 10000)
+    const planSections = extractSections(html)
+    const priceElements = extractPrices(text)
+    const speedElements = extractSpeeds(text)
 
-    $('script, style, nav, footer, header').remove()
-
-    const title = $('title').text().trim()
-    const text = $('body').text().replace(/\s+/g, ' ').trim().slice(0, 10000)
-
-    const planKeywords = ['plano', 'pacote', 'fibra', 'internet', 'velocidade', 'mega', 'mbps', 'giga']
-    const planSections: string[] = []
-
-    $('section, div, article').each((_, el) => {
-      const elText = $(el).text().toLowerCase()
-      const matches = planKeywords.filter(k => elText.includes(k))
-      if (matches.length >= 2) {
-        const content = $(el).text().replace(/\s+/g, ' ').trim()
-        if (content.length > 50 && content.length < 2000) {
-          planSections.push(content)
-        }
-      }
-    })
-
-    const priceElements: string[] = []
-    $('*').each((_, el) => {
-      const text = $(el).children().length === 0 ? $(el).text().trim() : ''
-      if (text.match(/R\$\s*\d+[\d.,]*/)) {
-        priceElements.push(text.slice(0, 200))
-      }
-    })
-
-    const speedElements: string[] = []
-    $('*').each((_, el) => {
-      const text = $(el).children().length === 0 ? $(el).text().trim() : ''
-      if (text.match(/\d+\s*(Mbps|Gbps|MB|GB|mega|giga)/i)) {
-        speedElements.push(text.slice(0, 200))
-      }
-    })
-
-    return {
-      url: normalizedUrl,
-      title,
-      text,
-      planSections: Array.from(new Set(planSections)).slice(0, 10),
-      priceElements: Array.from(new Set(priceElements)).slice(0, 20),
-      speedElements: Array.from(new Set(speedElements)).slice(0, 20),
-    }
+    return { url: normalizedUrl, title, text, planSections, priceElements, speedElements }
   } catch (error) {
     console.error(`Scrape error for ${url}:`, error)
     return null

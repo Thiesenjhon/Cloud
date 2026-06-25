@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+export const dynamic = 'force-dynamic'
 import { scrapeProviderWebsite } from '@/lib/scraper'
 import { extractPlansFromPage } from '@/lib/claude-extractor'
 
