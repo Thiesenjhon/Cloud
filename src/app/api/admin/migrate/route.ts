@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server'
 export const dynamic = 'force-dynamic'
 import { prisma } from '@/lib/db'
 
+export async function GET() {
+  return POST()
+}
+
 export async function POST() {
   if (!prisma) return NextResponse.json({ error: 'no db' }, { status: 503 })
   try {
