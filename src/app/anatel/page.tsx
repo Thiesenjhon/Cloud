@@ -91,8 +91,8 @@ export default function AnatelDashboard() {
               </div>
             </div>
             <nav className="flex items-center gap-2">
-              <Link href="/anatel/provedores" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-800 transition-all">
-                <Search className="w-3.5 h-3.5" /> Provedores
+              <Link href="/anatel/pesquisa" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-800 transition-all">
+                <Search className="w-3.5 h-3.5" /> Pesquisar
               </Link>
               <Link href="/anatel/coleta" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-800 transition-all">
                 <Database className="w-3.5 h-3.5" /> Coleta
