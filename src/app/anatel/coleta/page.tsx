@@ -1,8 +1,15 @@
 'use client'
 
 import { useState } from 'react'
-import { ArrowLeft, Play, Pause, CheckCircle, XCircle, Clock, Globe, MapPin, Brain, Database, Zap } from 'lucide-react'
+import { ArrowLeft, Play, Pause, CheckCircle, XCircle, Clock, Globe, MapPin, Brain, Database, Zap, Download } from 'lucide-react'
 import Link from 'next/link'
+
+interface ImportResult {
+  imported: number
+  skipped: number
+  source: string
+  total: number
+}
 
 interface JobStatus {
   type: string
@@ -22,6 +29,8 @@ const TAB_LABELS: Record<Tab, string> = { test: 'Testar Extração', jobs: 'Jobs
 
 export default function ColetaPage() {
   const [tab, setTab] = useState<Tab>('test')
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [websiteUrl, setWebsiteUrl] = useState('')
   const [providerName, setProviderName] = useState('')
   const [testResult, setTestResult] = useState<string | null>(null)
@@ -49,6 +58,15 @@ export default function ColetaPage() {
       setTestResult(JSON.stringify(await res.json(), null, 2))
     } catch (e) { setTestResult('Erro: ' + String(e)) }
     finally { setTestLoading(false) }
+  }
+
+  async function importAnatel() {
+    setImporting(true); setImportResult(null)
+    try {
+      const res = await fetch('/api/import/anatel', { method: 'POST' })
+      setImportResult(await res.json())
+    } catch (e) { setImportResult({ imported: 0, skipped: 0, source: 'error', total: 0 }) }
+    finally { setImporting(false) }
   }
 
   const statusIcon = (status: string) => {
@@ -131,6 +149,35 @@ export default function ColetaPage() {
 
         {tab === 'jobs' && (
           <div className="space-y-4">
+            {/* ANATEL Import */}
+            <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Download className="w-4 h-4 text-cyan-400" />
+                    <h3 className="text-sm font-semibold text-white">Importar Provedores ANATEL</h3>
+                  </div>
+                  <p className="text-xs text-gray-400">Busca os dados oficiais do dados.gov.br e salva no banco de dados. Execute isso primeiro.</p>
+                  {importResult && (
+                    <div className="mt-2 text-xs">
+                      {importResult.source === 'error' ? (
+                        <span className="text-red-400">Erro na importação</span>
+                      ) : (
+                        <span className="text-emerald-400">
+                          ✓ {importResult.imported} importados · {importResult.skipped} ignorados · fonte: {importResult.source}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <button onClick={importAnatel} disabled={importing}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-sm text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all whitespace-nowrap">
+                  {importing ? <Clock className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                  {importing ? 'Importando...' : 'Importar Agora'}
+                </button>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {Object.entries(jobs).map(([key, job]) => (
                 <div key={key} className="rounded-xl border border-gray-800 bg-gray-900 p-5 space-y-4">
