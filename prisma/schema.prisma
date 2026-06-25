@@ -35,6 +35,11 @@ model Provider {
   enrichedAt      DateTime?
   scrapedAt       DateTime?
 
+  crmColumnId     String?
+  crmColumn       CrmColumn? @relation(fields: [crmColumnId], references: [id])
+  crmOrder        Int        @default(0)
+  crmNotes        String?
+
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -97,4 +102,24 @@ model CollectionJob {
   startedAt   DateTime?
   finishedAt  DateTime?
   createdAt   DateTime @default(now())
+}
+
+model CrmColumn {
+  id        String     @id @default(cuid())
+  name      String
+  order     Int
+  color     String     @default("#6b7280")
+  createdAt DateTime   @default(now())
+  providers Provider[]
+}
+
+model EnrichJob {
+  id        String   @id @default(cuid())
+  type      String
+  status    String   @default("idle")
+  processed Int      @default(0)
+  total     Int      @default(0)
+  lastError String?
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
 }
