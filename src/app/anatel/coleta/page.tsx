@@ -37,6 +37,8 @@ const STATUS_COLORS = {
   error: 'bg-red-500/10 border-red-500/30 text-red-400',
 }
 
+interface JobStatus { id: string; type: string; status: string; processed: number; total: number }
+
 export default function ColetaPage() {
   const [states, setStates] = useState<StateData[]>([])
   const [selectedUf, setSelectedUf] = useState<string | null>(null)
@@ -46,18 +48,15 @@ export default function ColetaPage() {
   const [importProg, setImportProg] = useState<{ processed: number; total: number } | null>(null)
   const [importMsg, setImportMsg] = useState<string | null>(null)
 
-  // Enrich state
-  const [enriching, setEnriching] = useState(false)
-  const [enrichPaused, setEnrichPaused] = useState(false)
+  // Server-side job status (replaces browser loops)
+  const [jobs, setJobs] = useState<JobStatus[]>([])
   const [enrichStats, setEnrichStats] = useState<{ enriched: number; total: number; remaining: number } | null>(null)
-  const [enrichLog, setEnrichLog] = useState<EnrichResult[]>([])
   const [enrichUf, setEnrichUf] = useState('')
   const [showLog, setShowLog] = useState(false)
-  const enrichRunning = useRef(false)
+  const [enrichLog, setEnrichLog] = useState<EnrichResult[]>([])
 
-  const [cnpjSearching, setCnpjSearching] = useState(false)
-  const [cnpjLog, setCnpjLog] = useState<{name: string; cnpj: string | null; found: boolean; reason?: string}[]>([])
-  const cnpjRunning = useRef(false)
+  const googleJob = jobs.find(j => j.type === 'google_places')
+  const cnpjJob = jobs.find(j => j.type === 'cnpj')
 
   async function loadStates() {
     try {
@@ -75,7 +74,19 @@ export default function ColetaPage() {
     } catch { /* ignore */ }
   }
 
-  useEffect(() => { loadStates(); loadEnrichStats() }, [])
+  async function loadJobs() {
+    try {
+      const res = await fetch('/api/enrich/job')
+      const data = await res.json()
+      if (Array.isArray(data)) setJobs(data)
+    } catch { /* ignore */ }
+  }
+
+  useEffect(() => {
+    loadStates(); loadEnrichStats(); loadJobs()
+    const interval = setInterval(() => { loadJobs(); loadEnrichStats() }, 5000)
+    return () => clearInterval(interval)
+  }, [])
 
   // ── IMPORT ──
   async function importFromData(clean = false) {
@@ -86,7 +97,6 @@ export default function ColetaPage() {
     let totalSkipped = 0
     let grandTotal = 8950
     try {
-      // If clean reimport, delete old XLSX* records first
       if (clean) {
         setImportMsg('Limpando registros antigos...')
         await fetch('/api/import/from-data', { method: 'DELETE' })
@@ -117,67 +127,37 @@ export default function ColetaPage() {
     } finally { setImporting(false); setImportProg(null) }
   }
 
-  // ── ENRICH ──
-  async function startEnrich() {
-    if (enriching) { setEnrichPaused(!enrichPaused); return }
-    setEnriching(true); setEnrichPaused(false); setShowLog(true)
-    enrichRunning.current = true
-    setEnrichLog([])
-
-    const BATCH = 5 // small batches to show live results
-    let round = 0
-
-    while (enrichRunning.current) {
-      if (enrichPaused) { await new Promise(r => setTimeout(r, 500)); continue }
-      try {
-        const res = await fetch('/api/enrich/batch', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ limit: BATCH, uf: enrichUf || undefined }),
-        })
-        const data = await res.json()
-        if (data.error) { enrichRunning.current = false; break }
-
-        setEnrichLog(prev => [...data.results, ...prev].slice(0, 100))
-        setEnrichStats({ enriched: data.enrichedTotal, total: data.grandTotal, remaining: data.remaining })
-
-        if (data.processed === 0 || data.remaining === 0) {
-          enrichRunning.current = false; break
-        }
-
-        round++
-        // Small delay to avoid rate limits
-        await new Promise(r => setTimeout(r, 1200))
-      } catch {
-        await new Promise(r => setTimeout(r, 3000))
-      }
-    }
-
-    setEnriching(false); enrichRunning.current = false
-    await loadStates()
+  // ── SERVER JOBS (continuam mesmo saindo da página) ──
+  async function toggleJob(type: string) {
+    const job = jobs.find(j => j.type === type)
+    const action = job?.status === 'running' ? 'pause' : 'start'
+    await fetch('/api/enrich/job', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ type, action }),
+    })
+    await loadJobs()
   }
 
-  function stopEnrich() {
-    enrichRunning.current = false
-    setEnriching(false)
-    setEnrichPaused(false)
+  async function stopJob(type: string) {
+    await fetch('/api/enrich/job', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ type, action: 'stop' }),
+    })
+    await loadJobs()
   }
 
-  async function startCnpjSearch() {
-    if (cnpjSearching) return
-    setCnpjSearching(true); setCnpjLog([]); cnpjRunning.current = true
-    while (cnpjRunning.current) {
-      try {
-        const res = await fetch('/api/enrich/cnpj', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ limit: 3 }),
-        })
-        const data = await res.json()
-        if (data.error || data.processed === 0) { cnpjRunning.current = false; break }
-        setCnpjLog(prev => [...data.results, ...prev].slice(0, 50))
-        await new Promise(r => setTimeout(r, 2000))
-      } catch { await new Promise(r => setTimeout(r, 5000)) }
-    }
-    setCnpjSearching(false)
+  // Quick live preview — runs a single batch in browser to show immediate results
+  async function previewEnrich() {
+    setShowLog(true)
+    try {
+      const res = await fetch('/api/enrich/batch', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 5, uf: enrichUf || undefined }),
+      })
+      const data = await res.json()
+      if (data.results) setEnrichLog(prev => [...data.results, ...prev].slice(0, 100))
+      await loadEnrichStats()
+    } catch { /* ignore */ }
   }
 
   const totalDone = states.filter(s => s.status === 'done').length
@@ -287,31 +267,43 @@ export default function ColetaPage() {
             </div>
 
             <div className="flex flex-col gap-2 flex-shrink-0">
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
                 <select value={enrichUf} onChange={e => setEnrichUf(e.target.value)}
                   className="px-2 py-2 bg-gray-800 border border-gray-700 rounded-lg text-xs text-gray-300 focus:outline-none focus:border-cyan-500/50">
                   <option value="">Todos estados</option>
                   {BRAZIL_STATES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
-                <button onClick={startEnrich} disabled={!enriching && enrichStats?.remaining === 0}
+                <button onClick={() => toggleJob('google_places')} disabled={enrichStats?.remaining === 0}
                   className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm text-white transition-all whitespace-nowrap ${
-                    enriching
-                      ? enrichPaused ? 'bg-amber-600 hover:bg-amber-500' : 'bg-cyan-700 hover:bg-cyan-600'
+                    googleJob?.status === 'running'
+                      ? 'bg-cyan-700 hover:bg-cyan-600'
+                      : googleJob?.status === 'paused'
+                      ? 'bg-amber-600 hover:bg-amber-500'
                       : 'bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40'
                   }`}>
-                  {enriching ? (
-                    enrichPaused ? <><Play className="w-4 h-4" /> Retomar</> : <><Pause className="w-4 h-4" /> Pausar</>
-                  ) : (
-                    <><Sparkles className="w-4 h-4" /> Iniciar Busca</>
-                  )}
+                  {googleJob?.status === 'running'
+                    ? <><Pause className="w-4 h-4" /> Pausar</>
+                    : googleJob?.status === 'paused'
+                    ? <><Play className="w-4 h-4" /> Retomar</>
+                    : <><Sparkles className="w-4 h-4" /> Iniciar no Servidor</>
+                  }
                 </button>
-                {enriching && (
-                  <button onClick={stopEnrich}
+                {googleJob && googleJob.status !== 'idle' && (
+                  <button onClick={() => stopJob('google_places')}
                     className="px-3 py-2 rounded-lg border border-red-500/30 text-xs text-red-400 hover:bg-red-500/10 transition-all">
                     Parar
                   </button>
                 )}
               </div>
+              {googleJob?.status === 'running' && (
+                <p className="text-xs text-emerald-400 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
+                  Rodando no servidor · continua mesmo saindo da página
+                </p>
+              )}
+              <button onClick={previewEnrich} className="text-xs text-gray-500 hover:text-gray-300 underline text-left">
+                Testar agora (5 provedores)
+              </button>
             </div>
           </div>
 
@@ -360,24 +352,40 @@ export default function ColetaPage() {
                 💡 Provedores importados da lista XLSX não têm CNPJ verificado. Rode este passo para preencher.
               </p>
             </div>
-            <button onClick={startCnpjSearch} disabled={cnpjSearching || !enrichStats || enrichStats.total === 0}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-sm text-white disabled:opacity-40 transition-all whitespace-nowrap">
-              {cnpjSearching ? <><Clock className="w-4 h-4 animate-spin" /> Buscando...</> : <><Search className="w-4 h-4" /> Buscar CNPJs</>}
-            </button>
-          </div>
-          {cnpjLog.length > 0 && (
-            <div className="border-t border-gray-800 pt-3 space-y-1 max-h-40 overflow-y-auto">
-              {cnpjLog.map((r, i) => (
-                <div key={i} className="flex items-center gap-2 text-xs py-0.5">
-                  {r.found
-                    ? <CheckCircle className="w-3 h-3 text-emerald-400 flex-shrink-0" />
-                    : <AlertCircle className="w-3 h-3 text-gray-600 flex-shrink-0" />}
-                  <span className="text-gray-300 truncate flex-1">{r.name}</span>
-                  {r.found && r.cnpj && <span className="text-violet-400 font-mono text-xs flex-shrink-0">{r.cnpj}</span>}
-                  {!r.found && <span className="text-gray-600 flex-shrink-0">{r.reason}</span>}
-                </div>
-              ))}
+            <div className="flex flex-col gap-1.5 flex-shrink-0 items-end">
+              <div className="flex gap-2">
+                <button onClick={() => toggleJob('cnpj')} disabled={!enrichStats || enrichStats.total === 0}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm text-white transition-all whitespace-nowrap disabled:opacity-40 ${
+                    cnpjJob?.status === 'running' ? 'bg-violet-700 hover:bg-violet-600'
+                    : cnpjJob?.status === 'paused' ? 'bg-amber-600 hover:bg-amber-500'
+                    : 'bg-violet-600 hover:bg-violet-500'
+                  }`}>
+                  {cnpjJob?.status === 'running'
+                    ? <><Pause className="w-4 h-4" /> Pausar</>
+                    : cnpjJob?.status === 'paused'
+                    ? <><Play className="w-4 h-4" /> Retomar</>
+                    : <><Search className="w-4 h-4" /> Buscar CNPJs no Servidor</>
+                  }
+                </button>
+                {cnpjJob && cnpjJob.status !== 'idle' && (
+                  <button onClick={() => stopJob('cnpj')}
+                    className="px-3 py-2 rounded-lg border border-red-500/30 text-xs text-red-400 hover:bg-red-500/10 transition-all">
+                    Parar
+                  </button>
+                )}
+              </div>
+              {cnpjJob?.status === 'running' && (
+                <p className="text-xs text-emerald-400 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
+                  Rodando no servidor · {cnpjJob.processed.toLocaleString('pt-BR')} verificados
+                </p>
+              )}
             </div>
+          </div>
+          {cnpjJob && cnpjJob.processed > 0 && (
+            <p className="text-xs text-gray-500 border-t border-gray-800 pt-2">
+              {cnpjJob.processed.toLocaleString('pt-BR')} CNPJs verificados até agora nesta sessão de job
+            </p>
           )}
         </div>
 
@@ -423,8 +431,7 @@ export default function ColetaPage() {
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-700 text-xs text-gray-300 hover:bg-gray-800 transition-all">
                   <Search className="w-3 h-3" /> Ver Provedores
                 </Link>
-                <button onClick={() => { setEnrichUf(selectedUf); startEnrich() }}
-                  disabled={enriching}
+                <button onClick={() => { setEnrichUf(selectedUf || ''); toggleJob('google_places') }}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs text-white disabled:opacity-40 transition-all">
                   <Sparkles className="w-3 h-3" /> Buscar {selectedUf} com IA
                 </button>
