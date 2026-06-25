@@ -74,7 +74,7 @@ export default function ColetaPage() {
   useEffect(() => { loadStates(); loadEnrichStats() }, [])
 
   // ── IMPORT ──
-  async function importFromData() {
+  async function importFromData(clean = false) {
     setImporting(true); setImportMsg(null); setImportProg(null)
     const BATCH = 500
     let offset = 0
@@ -82,6 +82,12 @@ export default function ColetaPage() {
     let totalSkipped = 0
     let grandTotal = 8950
     try {
+      // If clean reimport, delete old XLSX* records first
+      if (clean) {
+        setImportMsg('Limpando registros antigos...')
+        await fetch('/api/import/from-data', { method: 'DELETE' })
+      }
+
       const meta = await fetch('/api/import/from-data').then(r => r.json()).catch(() => ({ total: 8950 }))
       grandTotal = meta.total || 8950
       setImportProg({ processed: 0, total: grandTotal })
@@ -215,11 +221,17 @@ export default function ColetaPage() {
                 <p className={`mt-2 text-xs ${importMsg.startsWith('✓') ? 'text-emerald-400' : 'text-red-400'}`}>{importMsg}</p>
               )}
             </div>
-            <button onClick={importFromData} disabled={importing}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm text-white disabled:opacity-40 transition-all whitespace-nowrap">
-              {importing ? <Clock className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              {importing ? 'Importando...' : 'Importar / Atualizar'}
-            </button>
+            <div className="flex flex-col gap-1.5">
+              <button onClick={() => importFromData(false)} disabled={importing}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm text-white disabled:opacity-40 transition-all whitespace-nowrap">
+                {importing ? <Clock className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                {importing ? 'Importando...' : 'Importar / Atualizar'}
+              </button>
+              <button onClick={() => importFromData(true)} disabled={importing}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-amber-500/30 text-xs text-amber-400 hover:bg-amber-500/10 disabled:opacity-40 transition-all whitespace-nowrap">
+                <Download className="w-3 h-3" /> Limpar e reimportar (corrige erros)
+              </button>
+            </div>
           </div>
         </div>
 

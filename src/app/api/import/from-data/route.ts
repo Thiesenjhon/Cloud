@@ -13,6 +13,19 @@ export async function GET() {
   return NextResponse.json({ total: providersData.length })
 }
 
+// DELETE old XLSX* records and reimport cleanly
+export async function DELETE() {
+  if (!prisma) return NextResponse.json({ error: 'no db' }, { status: 503 })
+  try {
+    const deleted = await prisma.provider.deleteMany({
+      where: { cnpj: { startsWith: 'XLSX' } },
+    })
+    return NextResponse.json({ deleted: deleted.count })
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 })
+  }
+}
+
 export async function POST(request: NextRequest) {
   if (!prisma) {
     return NextResponse.json({ error: 'Database not configured' }, { status: 503 })
