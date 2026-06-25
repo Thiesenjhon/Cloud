@@ -1,13 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ArrowLeft, Play, Pause, CheckCircle, XCircle, Clock, Globe, MapPin, Brain } from 'lucide-react'
+import { ArrowLeft, Play, Pause, CheckCircle, XCircle, Clock, Globe, MapPin, Brain, Database, Zap } from 'lucide-react'
 import Link from 'next/link'
 
 interface JobStatus {
@@ -20,17 +14,14 @@ interface JobStatus {
   log: string[]
 }
 
-const defaultJob: JobStatus = {
-  type: '',
-  status: 'idle',
-  progress: 0,
-  total: 0,
-  processed: 0,
-  errors: 0,
-  log: [],
-}
+const defaultJob: JobStatus = { type: '', status: 'idle', progress: 0, total: 0, processed: 0, errors: 0, log: [] }
+
+const TABS = ['test', 'jobs', 'config'] as const
+type Tab = typeof TABS[number]
+const TAB_LABELS: Record<Tab, string> = { test: 'Testar Extração', jobs: 'Jobs em Lote', config: 'Configuração' }
 
 export default function ColetaPage() {
+  const [tab, setTab] = useState<Tab>('test')
   const [websiteUrl, setWebsiteUrl] = useState('')
   const [providerName, setProviderName] = useState('')
   const [testResult, setTestResult] = useState<string | null>(null)
@@ -42,199 +33,180 @@ export default function ColetaPage() {
 
   async function testWebsiteScrape() {
     if (!websiteUrl || !providerName) return
-    setTestLoading(true)
-    setTestResult(null)
-
+    setTestLoading(true); setTestResult(null)
     try {
-      const res = await fetch('/api/enrich/website', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ websiteUrl, providerName }),
-      })
-      const data = await res.json()
-      setTestResult(JSON.stringify(data, null, 2))
-    } catch (e) {
-      setTestResult('Erro: ' + String(e))
-    } finally {
-      setTestLoading(false)
-    }
+      const res = await fetch('/api/enrich/website', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ websiteUrl, providerName }) })
+      setTestResult(JSON.stringify(await res.json(), null, 2))
+    } catch (e) { setTestResult('Erro: ' + String(e)) }
+    finally { setTestLoading(false) }
   }
 
   async function testGooglePlaces() {
     if (!providerName) return
-    setTestLoading(true)
-    setTestResult(null)
-
+    setTestLoading(true); setTestResult(null)
     try {
-      const res = await fetch('/api/enrich/google-places', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ companyName: providerName, municipio: 'São Paulo', uf: 'SP' }),
-      })
-      const data = await res.json()
-      setTestResult(JSON.stringify(data, null, 2))
-    } catch (e) {
-      setTestResult('Erro: ' + String(e))
-    } finally {
-      setTestLoading(false)
-    }
+      const res = await fetch('/api/enrich/google-places', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ companyName: providerName, municipio: 'São Paulo', uf: 'SP' }) })
+      setTestResult(JSON.stringify(await res.json(), null, 2))
+    } catch (e) { setTestResult('Erro: ' + String(e)) }
+    finally { setTestLoading(false) }
   }
 
   const statusIcon = (status: string) => {
-    if (status === 'running') return <Clock className="w-4 h-4 text-blue-500 animate-spin" />
-    if (status === 'done') return <CheckCircle className="w-4 h-4 text-green-500" />
-    if (status === 'error') return <XCircle className="w-4 h-4 text-red-500" />
-    return <Clock className="w-4 h-4 text-slate-400" />
+    if (status === 'running') return <Clock className="w-4 h-4 text-cyan-400 animate-spin" />
+    if (status === 'done') return <CheckCircle className="w-4 h-4 text-emerald-400" />
+    if (status === 'error') return <XCircle className="w-4 h-4 text-red-400" />
+    return <Clock className="w-4 h-4 text-gray-600" />
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="bg-white border-b border-slate-200">
+    <div className="min-h-screen bg-gray-950">
+      <header className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center gap-3">
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/anatel"><ArrowLeft className="w-4 h-4" /></Link>
-            </Button>
-            <div>
-              <h1 className="text-xl font-bold text-slate-900">Coleta de Dados</h1>
-              <p className="text-sm text-slate-500">Pipeline de enriquecimento de provedores</p>
+          <div className="flex items-center gap-4">
+            <Link href="/anatel" className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-gray-800 transition-all">
+              <ArrowLeft className="w-4 h-4" />
+            </Link>
+            <div className="w-px h-5 bg-gray-800" />
+            <div className="flex items-center gap-2">
+              <Database className="w-4 h-4 text-cyan-400" />
+              <h1 className="text-base font-semibold text-white">Coleta de Dados</h1>
             </div>
+            <span className="text-xs text-gray-500">Pipeline de enriquecimento de provedores</span>
           </div>
         </div>
-      </div>
+      </header>
 
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
-        <Tabs defaultValue="test">
-          <TabsList>
-            <TabsTrigger value="test">Testar Extração</TabsTrigger>
-            <TabsTrigger value="jobs">Jobs em Lote</TabsTrigger>
-            <TabsTrigger value="config">Configuração</TabsTrigger>
-          </TabsList>
+        {/* Tabs */}
+        <div className="flex gap-1 p-1 bg-gray-900 border border-gray-800 rounded-lg w-fit">
+          {TABS.map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${tab === t ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300'}`}>
+              {TAB_LABELS[t]}
+            </button>
+          ))}
+        </div>
 
-          <TabsContent value="test" className="space-y-4 mt-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Teste de Extração Manual</CardTitle>
-                <CardDescription>Teste a coleta em um provedor específico antes de rodar em lote</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-sm font-medium text-slate-700 mb-1 block">Nome do Provedor</label>
-                    <Input placeholder="Ex: Net Fibra Telecom" value={providerName} onChange={e => setProviderName(e.target.value)} />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-slate-700 mb-1 block">Site do Provedor</label>
-                    <Input placeholder="Ex: https://netfibra.com.br" value={websiteUrl} onChange={e => setWebsiteUrl(e.target.value)} />
-                  </div>
-                </div>
+        {tab === 'test' && (
+          <div className="rounded-xl border border-gray-800 bg-gray-900 p-5 space-y-5">
+            <div>
+              <h2 className="text-sm font-semibold text-white mb-0.5">Teste de Extração Manual</h2>
+              <p className="text-xs text-gray-500">Teste a coleta em um provedor específico antes de rodar em lote</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-gray-400 mb-1.5 block">Nome do Provedor</label>
+                <input placeholder="Ex: Net Fibra Telecom" value={providerName} onChange={e => setProviderName(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-cyan-500/50 transition-all" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-400 mb-1.5 block">Site do Provedor</label>
+                <input placeholder="Ex: https://netfibra.com.br" value={websiteUrl} onChange={e => setWebsiteUrl(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-cyan-500/50 transition-all" />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={testGooglePlaces} disabled={testLoading || !providerName}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-700 text-sm text-gray-300 hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+                <MapPin className="w-4 h-4" /> Testar Google Places
+              </button>
+              <button onClick={testWebsiteScrape} disabled={testLoading || !websiteUrl || !providerName}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-sm text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+                <Brain className="w-4 h-4" /> Testar Scraping + IA
+              </button>
+            </div>
+            {testLoading && (
+              <div className="flex items-center gap-2 text-sm text-cyan-400">
+                <Clock className="w-4 h-4 animate-spin" /> Processando...
+              </div>
+            )}
+            {testResult && (
+              <div>
+                <label className="text-xs font-medium text-gray-400 mb-1.5 block">Resultado</label>
+                <pre className="bg-gray-950 border border-gray-800 text-emerald-400 p-4 rounded-lg text-xs overflow-auto max-h-96 whitespace-pre-wrap font-mono">{testResult}</pre>
+              </div>
+            )}
+          </div>
+        )}
 
-                <div className="flex gap-2">
-                  <Button onClick={testGooglePlaces} disabled={testLoading || !providerName} variant="outline">
-                    <MapPin className="w-4 h-4 mr-1" /> Testar Google Places
-                  </Button>
-                  <Button onClick={testWebsiteScrape} disabled={testLoading || !websiteUrl || !providerName}>
-                    <Brain className="w-4 h-4 mr-1" /> Testar Scraping + IA
-                  </Button>
-                </div>
-
-                {testLoading && (
-                  <div className="flex items-center gap-2 text-sm text-slate-500">
-                    <Clock className="w-4 h-4 animate-spin" /> Processando...
-                  </div>
-                )}
-
-                {testResult && (
-                  <div>
-                    <label className="text-sm font-medium text-slate-700 mb-1 block">Resultado</label>
-                    <pre className="bg-slate-900 text-green-400 p-4 rounded-lg text-xs overflow-auto max-h-96 whitespace-pre-wrap">
-                      {testResult}
-                    </pre>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="jobs" className="space-y-4 mt-4">
+        {tab === 'jobs' && (
+          <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {Object.entries(jobs).map(([key, job]) => (
-                <Card key={key}>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-base flex items-center gap-2">
-                        {key === 'google_places' ? <Globe className="w-4 h-4 text-blue-500" /> : <Brain className="w-4 h-4 text-purple-500" />}
-                        {job.type}
-                      </CardTitle>
-                      {statusIcon(job.status)}
+                <div key={key} className="rounded-xl border border-gray-800 bg-gray-900 p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {key === 'google_places' ? <Globe className="w-4 h-4 text-cyan-400" /> : <Brain className="w-4 h-4 text-violet-400" />}
+                      <span className="text-sm font-semibold text-white">{job.type}</span>
                     </div>
-                    <CardDescription>
-                      {key === 'google_places' ? 'Busca endereço, telefone, avaliações e site no Google' : 'Scraping do site + extração de planos com Claude AI'}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex justify-between text-sm text-slate-500">
+                    {statusIcon(job.status)}
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    {key === 'google_places' ? 'Busca endereço, telefone, avaliações e site no Google' : 'Scraping do site + extração de planos com Claude AI'}
+                  </p>
+                  <div>
+                    <div className="flex justify-between text-xs text-gray-500 mb-1.5">
                       <span>{job.processed} / {job.total || '?'} processados</span>
                       <span>{job.errors} erros</span>
                     </div>
-                    <Progress value={job.total ? (job.processed / job.total) * 100 : 0} className="h-2" />
-                    <div className="flex gap-2">
-                      <Button size="sm" className="flex-1" disabled={job.status === 'running'}>
-                        <Play className="w-3 h-3 mr-1" /> Iniciar
-                      </Button>
-                      <Button size="sm" variant="outline" disabled={job.status !== 'running'}>
-                        <Pause className="w-3 h-3 mr-1" /> Pausar
-                      </Button>
+                    <div className="w-full bg-gray-800 rounded-full h-1.5">
+                      <div className="h-1.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all"
+                        style={{ width: `${job.total ? (job.processed / job.total) * 100 : 0}%` }} />
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                  <div className="flex gap-2">
+                    <button disabled={job.status === 'running'}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs text-white disabled:opacity-40 transition-all">
+                      <Play className="w-3 h-3" /> Iniciar
+                    </button>
+                    <button disabled={job.status !== 'running'}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-700 text-xs text-gray-400 hover:text-white disabled:opacity-40 transition-all">
+                      <Pause className="w-3 h-3" /> Pausar
+                    </button>
+                  </div>
+                </div>
               ))}
             </div>
-
-            <Card className="border-amber-200 bg-amber-50">
-              <CardContent className="pt-4 pb-4">
-                <p className="text-sm text-amber-800">
-                  <strong>Nota:</strong> Para processar todos os ~19k provedores, recomendamos executar o pipeline em background usando um worker (Celery, BullMQ, etc.) com rate limiting para respeitar os limites das APIs. Configure as variáveis de ambiente primeiro.
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+              <div className="flex items-start gap-2">
+                <Zap className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-amber-300">
+                  Para processar todos os ~19k provedores, recomendamos executar o pipeline em background com rate limiting para respeitar os limites das APIs.
                 </p>
-              </CardContent>
-            </Card>
-          </TabsContent>
+              </div>
+            </div>
+          </div>
+        )}
 
-          <TabsContent value="config" className="space-y-4 mt-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Variáveis de Ambiente</CardTitle>
-                <CardDescription>Configure no seu .env.local ou nas variáveis do ambiente de deploy</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {[
-                    { key: 'DATABASE_URL', desc: 'PostgreSQL connection string (ex: Supabase, Neon, Railway)', required: true },
-                    { key: 'GOOGLE_PLACES_API_KEY', desc: 'Google Cloud Console → APIs → Places API', required: true },
-                    { key: 'ANTHROPIC_API_KEY', desc: 'console.anthropic.com → API Keys', required: true },
-                  ].map(env => (
-                    <div key={env.key} className="flex items-start gap-3 p-3 bg-slate-50 rounded-lg">
-                      <Badge variant={env.required ? 'destructive' : 'secondary'} className="text-xs mt-0.5">
-                        {env.required ? 'obrigatório' : 'opcional'}
-                      </Badge>
-                      <div>
-                        <code className="text-sm font-mono text-slate-900">{env.key}</code>
-                        <p className="text-xs text-slate-500 mt-0.5">{env.desc}</p>
-                      </div>
-                    </div>
-                  ))}
+        {tab === 'config' && (
+          <div className="rounded-xl border border-gray-800 bg-gray-900 p-5 space-y-5">
+            <div>
+              <h2 className="text-sm font-semibold text-white mb-0.5">Variáveis de Ambiente</h2>
+              <p className="text-xs text-gray-500">Configure no Vercel → Environment Variables</p>
+            </div>
+            <div className="space-y-2">
+              {[
+                { key: 'DATABASE_URL', desc: 'PostgreSQL connection string (Neon, Supabase, Railway)', required: true },
+                { key: 'GOOGLE_PLACES_API_KEY', desc: 'Google Cloud Console → APIs → Places API', required: true },
+                { key: 'ANTHROPIC_API_KEY', desc: 'console.anthropic.com → API Keys', required: true },
+              ].map(env => (
+                <div key={env.key} className="flex items-start gap-3 p-3 bg-gray-800 border border-gray-700 rounded-lg">
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium mt-0.5 whitespace-nowrap">✓ ativo</span>
+                  <div>
+                    <code className="text-sm font-mono text-cyan-300">{env.key}</code>
+                    <p className="text-xs text-gray-500 mt-0.5">{env.desc}</p>
+                  </div>
                 </div>
-
-                <div className="mt-4 p-3 bg-slate-900 rounded-lg">
-                  <pre className="text-xs text-green-400 whitespace-pre-wrap">{`# .env.local
-DATABASE_URL="postgresql://user:pass@host:5432/anatel_db"
+              ))}
+            </div>
+            <div className="bg-gray-950 border border-gray-800 rounded-lg p-4">
+              <pre className="text-xs text-emerald-400 font-mono whitespace-pre-wrap">{`# .env.local
+DATABASE_URL="postgresql://user:pass@host:5432/db"
 GOOGLE_PLACES_API_KEY="AIza..."
 ANTHROPIC_API_KEY="sk-ant-..."`}</pre>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
