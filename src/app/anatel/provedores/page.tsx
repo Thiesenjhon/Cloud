@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Search, MapPin, ChevronLeft, ChevronRight, ArrowLeft, Building2, Signal } from 'lucide-react'
+import { Search, MapPin, ChevronLeft, ChevronRight, ArrowLeft, Building2, Signal, Star, Globe, Phone } from 'lucide-react'
 import Link from 'next/link'
 import type { AnatelProvider } from '@/types/provider'
 
@@ -95,10 +95,14 @@ export default function ProvedoresPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {providers.map(provider => (
-              <div key={provider.cnpj} className="group rounded-xl border border-gray-800 bg-gray-900 p-4 hover:border-gray-700 hover:bg-gray-900/80 transition-all">
-                <div className="flex items-start justify-between gap-3">
+              <Link
+                key={provider.cnpj}
+                href={`/anatel/provedores/${(provider as any).id || provider.cnpj}`}
+                className="group block rounded-xl border border-gray-800 bg-gray-900 p-4 hover:border-cyan-500/30 hover:bg-gray-900/80 transition-all cursor-pointer"
+              >
+                <div className="flex items-start justify-between gap-3 mb-2">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                       <h3 className="font-semibold text-white truncate text-sm">
                         {provider.nomeFantasia || provider.razaoSocial}
                       </h3>
@@ -107,28 +111,55 @@ export default function ProvedoresPage() {
                           {provider.porte}
                         </span>
                       )}
-                    </div>
-                    <p className="text-xs text-gray-500 truncate mb-2">{provider.razaoSocial}</p>
-                    <div className="flex items-center gap-3 text-xs text-gray-500">
-                      <span className="flex items-center gap-1">
-                        <MapPin className="w-3 h-3 text-gray-600" />
-                        {provider.municipio}, {provider.uf}
-                      </span>
-                      {provider.situacao && (
-                        <span className="flex items-center gap-1 text-emerald-500">
-                          <Signal className="w-3 h-3" />
-                          {provider.situacao}
+                      {(provider as any).googleRating && (
+                        <span className="flex items-center gap-0.5 text-xs text-amber-400 ml-auto">
+                          <Star className="w-3 h-3 fill-amber-400" />
+                          {((provider as any).googleRating as number).toFixed(1)}
                         </span>
                       )}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <span className="text-xs font-mono text-gray-700 group-hover:text-gray-500 transition-colors">
-                      {provider.cnpj.slice(0, 8)}...
-                    </span>
+                  {/* Enrichment dot */}
+                  <div className="flex-shrink-0 mt-1">
+                    {(provider as any).enrichedAt
+                      ? <span className="w-2 h-2 rounded-full bg-emerald-400 block" title="Enriquecido" />
+                      : <span className="w-2 h-2 rounded-full bg-gray-700 block" title="Sem enriquecimento" />
+                    }
                   </div>
                 </div>
-              </div>
+
+                <div className="flex items-center gap-3 text-xs text-gray-500 mb-2">
+                  <span className="flex items-center gap-1">
+                    <MapPin className="w-3 h-3 text-gray-600" />
+                    {provider.municipio}, {provider.uf}
+                  </span>
+                  {(provider as any).enrichedAt && (
+                    <span className="text-emerald-600 text-xs">Enriquecido</span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3 text-xs text-gray-600 flex-wrap">
+                  {(provider as any).googlePhone && (
+                    <span className="flex items-center gap-1">
+                      <Phone className="w-3 h-3" />
+                      {(provider as any).googlePhone}
+                    </span>
+                  )}
+                  {((provider as any).googleWebsite || (provider as any).websiteUrl) && (
+                    <span className="flex items-center gap-1 text-cyan-700 truncate max-w-[160px]">
+                      <Globe className="w-3 h-3 flex-shrink-0" />
+                      {((provider as any).googleWebsite || (provider as any).websiteUrl)
+                        .replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                    </span>
+                  )}
+                  {(provider as any)._count?.plans !== undefined
+                    ? <span className="ml-auto text-gray-600">{(provider as any)._count.plans} planos</span>
+                    : (provider as any).scrapedAt
+                      ? <span className="ml-auto text-gray-600">Planos coletados</span>
+                      : <span className="ml-auto text-gray-700 italic">Sem planos ainda</span>
+                  }
+                </div>
+              </Link>
             ))}
           </div>
         )}
