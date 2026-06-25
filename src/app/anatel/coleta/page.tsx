@@ -63,6 +63,17 @@ export default function ColetaPage() {
 
   useEffect(() => { loadStates() }, [])
 
+  async function importFromData() {
+    setImporting(true); setImportResult(null)
+    try {
+      const res = await fetch('/api/import/from-data', { method: 'POST' })
+      const data = await res.json()
+      setImportResult(data)
+      await loadStates()
+    } catch { setImportResult({ imported: 0, skipped: 0, source: 'error', total: 0 }) }
+    finally { setImporting(false) }
+  }
+
   async function importAnatel() {
     setImporting(true); setImportResult(null)
     try {
@@ -121,24 +132,24 @@ export default function ColetaPage() {
           ))}
         </div>
 
-        {/* Import ANATEL */}
-        <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-5">
+        {/* Import base lista */}
+        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <Download className="w-4 h-4 text-cyan-400" />
-                <h3 className="text-sm font-semibold text-white">Passo 1 — Importar base ANATEL</h3>
+                <Download className="w-4 h-4 text-emerald-400" />
+                <h3 className="text-sm font-semibold text-white">Passo 1 — Importar lista de 8.950 provedores</h3>
               </div>
-              <p className="text-xs text-gray-400">Baixa todos os provedores cadastrados na ANATEL (dados.gov.br) e salva no banco. Execute uma vez.</p>
+              <p className="text-xs text-gray-400">Importa a base de provedores com ranking por número de acessos (fonte: ANATEL). Execute uma vez para popular o banco.</p>
               {importResult && (
                 <p className={`mt-2 text-xs ${importResult.source === 'error' ? 'text-red-400' : 'text-emerald-400'}`}>
                   {importResult.source === 'error' ? 'Erro na importação.' : `✓ ${importResult.imported.toLocaleString('pt-BR')} provedores importados · fonte: ${importResult.source}`}
                 </p>
               )}
             </div>
-            <button onClick={importAnatel} disabled={importing}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-sm text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all whitespace-nowrap">
-              {importing ? <><Clock className="w-4 h-4 animate-spin" /> Importando...</> : <><Download className="w-4 h-4" /> Importar Agora</>}
+            <button onClick={importFromData} disabled={importing}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all whitespace-nowrap">
+              {importing ? <><Clock className="w-4 h-4 animate-spin" /> Importando...</> : <><Download className="w-4 h-4" /> Importar Lista</>}
             </button>
           </div>
         </div>
