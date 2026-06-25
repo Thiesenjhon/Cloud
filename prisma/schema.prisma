@@ -9,13 +9,15 @@ datasource db {
 
 model Provider {
   id              String   @id @default(cuid())
-  cnpj            String   @unique
+  cnpj            String?  @unique
   razaoSocial     String
   nomeFantasia    String?
   uf              String
   municipio       String
   porte           String?
   situacao        String?
+  cnpjVerificado  Boolean  @default(false)
+  cnpjFonte       String?
   dataAutorizacao DateTime?
 
   googlePlaceId   String?

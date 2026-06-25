@@ -55,6 +55,10 @@ export default function ColetaPage() {
   const [showLog, setShowLog] = useState(false)
   const enrichRunning = useRef(false)
 
+  const [cnpjSearching, setCnpjSearching] = useState(false)
+  const [cnpjLog, setCnpjLog] = useState<{name: string; cnpj: string | null; found: boolean; reason?: string}[]>([])
+  const cnpjRunning = useRef(false)
+
   async function loadStates() {
     try {
       const res = await fetch('/api/states/research')
@@ -156,6 +160,24 @@ export default function ColetaPage() {
     enrichRunning.current = false
     setEnriching(false)
     setEnrichPaused(false)
+  }
+
+  async function startCnpjSearch() {
+    if (cnpjSearching) return
+    setCnpjSearching(true); setCnpjLog([]); cnpjRunning.current = true
+    while (cnpjRunning.current) {
+      try {
+        const res = await fetch('/api/enrich/cnpj', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ limit: 3 }),
+        })
+        const data = await res.json()
+        if (data.error || data.processed === 0) { cnpjRunning.current = false; break }
+        setCnpjLog(prev => [...data.results, ...prev].slice(0, 50))
+        await new Promise(r => setTimeout(r, 2000))
+      } catch { await new Promise(r => setTimeout(r, 5000)) }
+    }
+    setCnpjSearching(false)
   }
 
   const totalDone = states.filter(s => s.status === 'done').length
@@ -319,6 +341,42 @@ export default function ColetaPage() {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+        </div>
+
+        {/* STEP 3 — CNPJ Lookup */}
+        <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-5 space-y-3">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs font-bold text-violet-400 bg-violet-500/10 px-1.5 py-0.5 rounded border border-violet-500/20">03</span>
+                <h3 className="text-sm font-semibold text-white">Verificar CNPJ com IA</h3>
+              </div>
+              <p className="text-xs text-gray-400">
+                A IA busca e valida o CNPJ real de cada provedor (via BrasilAPI). CNPJ é a chave oficial — sem ele, não é possível cruzar dados com Receita Federal, ANATEL e outras bases.
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                💡 Provedores importados da lista XLSX não têm CNPJ verificado. Rode este passo para preencher.
+              </p>
+            </div>
+            <button onClick={startCnpjSearch} disabled={cnpjSearching || !enrichStats || enrichStats.total === 0}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-sm text-white disabled:opacity-40 transition-all whitespace-nowrap">
+              {cnpjSearching ? <><Clock className="w-4 h-4 animate-spin" /> Buscando...</> : <><Search className="w-4 h-4" /> Buscar CNPJs</>}
+            </button>
+          </div>
+          {cnpjLog.length > 0 && (
+            <div className="border-t border-gray-800 pt-3 space-y-1 max-h-40 overflow-y-auto">
+              {cnpjLog.map((r, i) => (
+                <div key={i} className="flex items-center gap-2 text-xs py-0.5">
+                  {r.found
+                    ? <CheckCircle className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+                    : <AlertCircle className="w-3 h-3 text-gray-600 flex-shrink-0" />}
+                  <span className="text-gray-300 truncate flex-1">{r.name}</span>
+                  {r.found && r.cnpj && <span className="text-violet-400 font-mono text-xs flex-shrink-0">{r.cnpj}</span>}
+                  {!r.found && <span className="text-gray-600 flex-shrink-0">{r.reason}</span>}
+                </div>
+              ))}
             </div>
           )}
         </div>

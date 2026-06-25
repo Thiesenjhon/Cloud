@@ -18,7 +18,7 @@ export async function DELETE() {
   if (!prisma) return NextResponse.json({ error: 'no db' }, { status: 503 })
   try {
     const deleted = await prisma.provider.deleteMany({
-      where: { cnpj: { startsWith: 'XLSX' } },
+      where: { OR: [{ cnpj: null }, { cnpj: { startsWith: 'XLSV' } }, { cnpj: { startsWith: 'XLSX' } }] },
     })
     return NextResponse.json({ deleted: deleted.count })
   } catch (e) {
@@ -42,13 +42,14 @@ export async function POST(request: NextRequest) {
     // Use createMany with skipDuplicates for speed
     const result = await prisma.provider.createMany({
       data: batch.map(p => ({
-        cnpj: p.cnpj,
+        cnpj: null,  // No real CNPJ yet — will be found by AI
         razaoSocial: p.razaoSocial,
         nomeFantasia: p.nomeFantasia,
         uf: p.uf || '',
         municipio: p.municipio || '',
         porte: p.porte,
         situacao: p.situacao,
+        cnpjFonte: 'xlsx_pendente',
       })),
       skipDuplicates: true,
     })
