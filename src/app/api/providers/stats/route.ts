@@ -45,7 +45,7 @@ export async function GET() {
             acc[t] = (acc[t] || 0) + 1
             return acc
           }, {} as Record<string, number>)
-        ).map(([technology, count]) => ({ technology, count })).sort((a, b) => b.count - a.count)
+        ).map(([technology, count]) => ({ technology, count: count as number })).sort((a, b) => b.count - a.count)
 
         // Speed distribution buckets
         const speedBuckets = [
